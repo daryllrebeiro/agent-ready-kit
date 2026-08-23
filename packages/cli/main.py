@@ -318,6 +318,10 @@ def build_parser() -> argparse.ArgumentParser:
     auth_sub.add_parser("whoami", help="View current authenticated credentials")
     auth_sub.add_parser("logout", help="Remove stored API key")
 
+    # Simulate command
+    sim_parser = subparsers.add_parser("simulate", help="Simulate specialized AI agent personas on a website")
+    sim_parser.add_argument("url", help="Target URL to simulate agents on")
+
     # Generate command
     gen_parser = subparsers.add_parser("generate", help="Generate compliant llms.txt and structured metadata templates")
     gen_parser.add_argument("--sitemap", help="URL to sitemap.xml to auto-discover pages")
@@ -328,6 +332,27 @@ def build_parser() -> argparse.ArgumentParser:
     gen_parser.add_argument("--output-dir", "-o", default=".", help="Directory to save generated files (default: current directory)")
 
     return parser
+
+
+def handle_simulate_command(args: argparse.Namespace) -> int:
+    """Run AI agent persona simulations."""
+    from packages.core.personas.simulator import AgentPersonaSimulator
+    console = Console()
+    sim = AgentPersonaSimulator()
+
+    console.print(f"[dim]Simulating AI agent personas against [bold white]{args.url}[/bold white]...[/dim]")
+    res = sim.simulate_all_personas(args.url)
+
+    console.print(f"\n[bold white]Target URL:[/bold white] [bold cyan]{res['url']}[/bold cyan]")
+    console.print(f"[bold white]Overall Persona Compatibility:[/bold white] [bold green]{res['overall_compatibility']}/100[/bold green]\n")
+
+    console.print("[bold]Agent Archetype Compatibility Breakdown:[/bold]")
+    for key, p in res["personas"].items():
+        badge_color = "green" if p["status"] == "EXCELLENT" else "yellow" if p["status"] == "MODERATE" else "red"
+        console.print(f"\n  * [bold]{p['name']}[/bold] - Score: [{badge_color}]{p['compatibility_score']:.1f}/100 ({p['status']})[/{badge_color}]")
+        for strength in p.get("key_strengths", []):
+            console.print(f"    - {strength}")
+    return 0
 
 
 def handle_auth_command(args: argparse.Namespace) -> int:
@@ -374,6 +399,8 @@ def cli_entrypoint(argv: Optional[List[str]] = None) -> int:
         return handle_correlate_command(args)
     elif args.command == "fix":
         return handle_fix_command(args)
+    elif args.command == "simulate":
+        return handle_simulate_command(args)
     elif args.command == "auth":
         return handle_auth_command(args)
     elif args.command == "generate":
