@@ -333,6 +333,11 @@ def build_parser() -> argparse.ArgumentParser:
     sim_parser = subparsers.add_parser("simulate", help="Simulate specialized AI agent personas on a website")
     sim_parser.add_argument("url", help="Target URL to simulate agents on")
 
+    # Report command
+    report_parser = subparsers.add_parser("report", help="Generate an Executive AI Agent Health Report")
+    report_parser.add_argument("url", help="Target URL to generate executive report for")
+    report_parser.add_argument("--output", "-o", help="File path to save the generated markdown report")
+
     # Generate command
     gen_parser = subparsers.add_parser("generate", help="Generate compliant llms.txt and structured metadata templates")
     gen_parser.add_argument("--sitemap", help="URL to sitemap.xml to auto-discover pages")
@@ -341,9 +346,27 @@ def build_parser() -> argparse.ArgumentParser:
     gen_parser.add_argument("--description", help="Site/Product brief summary")
     gen_parser.add_argument("--languages", help="Comma-separated language codes for multilingual llms.txt suite (e.g. en,es,ja,de,fr,zh)")
     gen_parser.add_argument("--max-pages", type=int, default=20, help="Maximum number of sitemap pages to include (default: 20)")
-    gen_parser.add_argument("--output-dir", "-o", default=".", help="Directory to save generated files (default: current directory)")
+    gen_parser.add_argument("--output-dir", default=".", help="Directory to save generated files (default: current directory)")
 
     return parser
+
+
+def handle_report_command(args: argparse.Namespace) -> int:
+    """Generate and export Executive AI Agent Health Report."""
+    from packages.core.reports.health_report import ExecutiveHealthReportGenerator
+    console = Console()
+    gen = ExecutiveHealthReportGenerator()
+
+    console.print(f"[dim]Compiling Executive AI Agent Health Report for [bold white]{args.url}[/bold white]...[/dim]")
+    report_md = gen.generate_report(args.url)
+
+    if args.output:
+        with open(args.output, "w", encoding="utf-8") as f:
+            f.write(report_md)
+        console.print(f"[bold green][OK] Successfully saved Executive Health Report to [bold cyan]{args.output}[/bold cyan][/bold green]")
+    else:
+        console.print(f"\n{report_md}")
+    return 0
 
 
 def handle_simulate_command(args: argparse.Namespace) -> int:
@@ -413,6 +436,8 @@ def cli_entrypoint(argv: Optional[List[str]] = None) -> int:
         return handle_fix_command(args)
     elif args.command == "simulate":
         return handle_simulate_command(args)
+    elif args.command == "report":
+        return handle_report_command(args)
     elif args.command == "auth":
         return handle_auth_command(args)
     elif args.command == "generate":
