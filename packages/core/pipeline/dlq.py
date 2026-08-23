@@ -31,6 +31,9 @@ class DeadLetterQueue:
         self._queue: List[FailedJob] = []
         self._escalated: List[FailedJob] = []
 
+    def __len__(self) -> int:
+        return len(self._queue)
+
     def push(
         self,
         org_id: str,

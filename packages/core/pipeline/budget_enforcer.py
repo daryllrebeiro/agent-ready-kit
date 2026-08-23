@@ -11,14 +11,24 @@ from packages.core.probes.redis_cache import DistributedProbeCache
 
 class BudgetExceededError(Exception):
     """Raised when tenant has exhausted their monthly probe budget."""
-    def __init__(self, tenant_id: str, limit: int, current: int):
+    def __init__(self, tenant_id: str, limit: int, current: int, upgrade_url: Optional[str] = None):
         self.tenant_id = tenant_id
         self.limit = limit
         self.current = current
+        self.upgrade_url = upgrade_url or f"https://app.agentready.dev/billing/upgrade?tenant_id={tenant_id}"
         super().__init__(
             f"Monthly probe budget exceeded for tenant '{tenant_id}'. "
-            f"Limit: {limit}, Current Usage: {current}. Please upgrade your plan."
+            f"Limit: {limit}, Current Usage: {current}. Upgrade your plan at {self.upgrade_url}"
         )
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "error": "BUDGET_EXCEEDED",
+            "tenant_id": self.tenant_id,
+            "monthly_limit": self.limit,
+            "current_usage": self.current,
+            "upgrade_url": self.upgrade_url,
+        }
 
 
 class GlobalSpendCircuitBreakerTripped(Exception):

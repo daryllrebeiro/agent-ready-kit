@@ -1,4 +1,4 @@
-"""Production APM Bridge, Concrete SLO Definition, and Tabletop Incident Drill Harness."""
+"""Production APM Bridge, Concrete SLO Definition, OpenTelemetry OTLP Exporter, and Incident Tabletop Drill."""
 
 import math
 import time
@@ -71,6 +71,62 @@ class APMMetricsBridge:
         }
 
 
+class OpenTelemetryTraceExporterBridge:
+    """Formats and batches structured spans into standard OpenTelemetry OTLP JSON payloads."""
+
+    def __init__(self, service_name: str = "agentready-saas-core"):
+        self.service_name = service_name
+        self.buffered_spans: List[Dict[str, Any]] = []
+
+    def record_span(
+        self,
+        trace_id: str,
+        span_id: str,
+        name: str,
+        tenant_id: str,
+        duration_ms: float,
+        attributes: Optional[Dict[str, Any]] = None,
+    ):
+        span = {
+            "traceId": trace_id,
+            "spanId": span_id,
+            "name": name,
+            "startTimeUnixNano": int((time.time() - (duration_ms / 1000.0)) * 1e9),
+            "endTimeUnixNano": int(time.time() * 1e9),
+            "attributes": [
+                {"key": "tenant.id", "value": {"stringValue": tenant_id}},
+                {"key": "service.name", "value": {"stringValue": self.service_name}},
+            ],
+        }
+        if attributes:
+            for k, v in attributes.items():
+                span["attributes"].append({"key": k, "value": {"stringValue": str(v)}})
+        self.buffered_spans.append(span)
+
+    def export_otlp_payload(self) -> Dict[str, Any]:
+        """Generates an OpenTelemetry standard OTLP JSON payload."""
+        payload = {
+            "resourceSpans": [
+                {
+                    "resource": {
+                        "attributes": [
+                            {"key": "service.name", "value": {"stringValue": self.service_name}},
+                            {"key": "telemetry.sdk.language", "value": {"stringValue": "python"}},
+                        ]
+                    },
+                    "scopeSpans": [
+                        {
+                            "scope": {"name": "packages.core.observability.apm"},
+                            "spans": list(self.buffered_spans),
+                        }
+                    ],
+                }
+            ]
+        }
+        self.buffered_spans.clear()
+        return payload
+
+
 class SLOAlertEngine:
     """Evaluates SLO breach rules and dispatches structured PagerDuty/Slack incident notifications."""
 
@@ -124,11 +180,8 @@ class IncidentTabletopSimulator:
     def run_edge_proxy_failclosed_drill(on_call_engineer: str) -> Dict[str, Any]:
         """Runs rehearsed runbook procedure: detects synthetic breach and verifies manual kill-switch activation."""
         drill_start = time.time()
-        # 1. Step 1: Detect synthetic breach
         incident_id = f"drill_edge_502_{int(drill_start)}"
-        # 2. Step 2: Escalate to named on-call
         escalation_received = True
-        # 3. Step 3: On-call engineer executes kill switch runbook
         kill_switch_executed = True
         elapsed_sec = time.time() - drill_start
 
