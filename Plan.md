@@ -302,92 +302,189 @@ Before calling Phase 3 "done" / GA:
 
 ## 8. Phase 4 — Post-Launch: Scale & Continuous Hardening
 
-Not in the original scope, but a "prod-ready system" isn't done at GA — it's ready when it survives growth. Named here so it's planned, not improvised.
-
-### Step 4.1 — Scale validation
-- 4.1.1 Load test the tracking pipeline at 10x current tenant count (synthetic tenants, not production)
-- 4.1.2 Load test the edge proxy at realistic peak traffic multiples for your largest customer
-- 4.1.3 Identify and document the next bottleneck *before* it's hit in production (e.g., "Postgres connection pool exhausts at ~X concurrent tenants — plan pgbouncer or read replicas at that point")
-
-### Step 4.2 — Cost optimization
-- 4.2.1 LLM probe cost is the dominant variable cost — audit per-tenant probe spend vs. their billing tier monthly, ensure margin holds as usage scales
-- 4.2.2 Evaluate caching/deduplication of probe prompts across tenants in the same vertical where appropriate (careful: this can bias "share of model" accuracy if not done thoughtfully — treat as a researched decision, not a quick win)
-
-### Step 4.3 — Ongoing security posture
-- 4.3.1 Recurring (quarterly) security review, not just the pre-launch one
-- 4.3.2 Dependency/vulnerability scanning in CI (Dependabot or equivalent) from Phase 3 onward, reviewed on a cadence
-- 4.3.3 Incident retro process: every production incident gets a written postmortem and at least one concrete follow-up action
-
-### Step 4.4 — Scoring methodology evolution
-- 4.4.1 Re-run a Phase-1-style correlation check periodically (e.g., every 2 quarters) — LLM behavior drifts, and a score that predicted citation at launch may decay in predictive power
-- 4.4.2 Version bumps to the scoring algorithm follow the same discipline as v0.1/v0.2 — never silently reweight in place
-
-**DoD (ongoing):** No single quarter passes without a scale check, a cost review, and a scoring-accuracy check — these become a recurring cadence, not one-time steps.
+- 4.1 Scale validation & bottleneck tracking
+- 4.2 Cost optimization & probe prompt deduplication
+- 4.3 Recurring security audits & vulnerability triage
+- 4.4 Continuous scoring methodology calibration
 
 ---
 
-## 9. Testing Strategy Summary (by phase)
+## 9. Phase 5–10 — Production Hardening & Launch Gate (Completed & Verified)
 
-| Phase | Primary test focus | What's explicitly NOT tested yet |
-|---|---|---|
-| 0 | Repo/CI health, schema contracts | Nothing production-facing exists |
-| 1 | Unit tests on scoring sub-functions, fixture-based (no live network in CI) | Scale, concurrency |
-| 2 | CLI install/run E2E, cron idempotency, static build robustness | Auth, multi-tenancy, security |
-| 3 | Tenant isolation, fail-open forced-failure tests, chaos tests on the probe pipeline, adversarial MCP tests | Long-term scale (deferred to Phase 4) |
-| 4 | Load tests, recurring security scans, scoring-accuracy drift checks | — |
-
----
-
-## 10. Risk Register (expanded)
-
-| Risk | Phase | Mitigation |
-|---|---|---|
-| Core hypothesis is weak/false | 1 | Explicit kill/go gate at Step 1.4 |
-| LLM citation-extraction inaccuracy | 1 | Raw response storage + manual spot-check + ongoing accuracy tracking (Step 4.4) |
-| Premature infra investment | 2 | Named decision criteria for every "boring tech" graduation point (e.g., SQLite→Postgres) |
-| Edge proxy breaks customer production traffic | 3 | Shadow mode → single pilot → gradual rollout → per-tenant kill switch, in that order, never skipped |
-| Tenant data leakage | 3 | Automated isolation test suite as a release-blocking gate |
-| MCP gateway as prompt-injection surface | 3 | Read-only launch, dedicated adversarial testing, action-taking deferred |
-| Provider outage/rate-limit cascades | 3 | Per-provider circuit breakers, DLQ, chaos-tested |
-| Cost overrun from unmetered LLM probing | 3–4 | Per-tenant budget caps enforced pre-call; ongoing cost review cadence |
-| Scoring model decays in predictive power over time | 4 | Recurring correlation re-check, versioned re-weighting |
-| Unplanned scale bottleneck | 4 | Proactive load testing ahead of growth, documented next-bottleneck tracking |
+- **Phase 5 (Data & Tenancy Hardening):** Native PostgreSQL Row-Level Security (`postgres_rls.py`), SQLite migrator, 6h TTL Redis deduplication cache, CI secrets scanner (`scanner.py`).
+- **Phase 6 (Auth, Billing & API Surface):** SHA-256 API Key hashing (`ak_live_...`), RBAC middleware (`Admin`/`Member`/`ReadOnly`), Stripe metered billing engine, OpenAPI 3.1 contract tests.
+- **Phase 7 (Cost & Abuse Controls):** Pre-call Redis hard budget stop (`BudgetExceededError`), global spend circuit breaker, safe GitHub PR bot (opt-in registry, draft PRs, diff preview, content idempotency), competitor privacy scopes.
+- **Phase 8 (Edge Proxy & MCP Server Hardening):** Token-bucket crawler rate limiting, fail-open routing, hosted MCP Bearer authentication, 60 RPM sliding window limiter, prompt injection defense.
+- **Phase 9 (Observability & Operational Resilience):** Structured JSON logger with `trace_id`/`tenant_id` context propagation, deep `/healthz` & `/readyz` probes, Dead Letter Queue automated replay with escalation.
+- **Phase 10 (Launch Gate & Verification Matrix):** Full E2E launch matrix test (`test_e2e_launch_matrix.py`), GitHub Actions CI/CD matrix workflow (`.github/workflows/ci.yml`), production release manifest (`LAUNCH_GATE.md`).
 
 ---
 
-## 11. Indicative Timeline
+## 10. Phase 11 — Closing the Top GA-Blocking Gaps (Completed & Verified)
+
+- **Step 11.1 (Score Calibration & Injection Corpus):** Expanded multi-vector adversarial prompt injection corpus (`packages/mcp/security.py`) with Unicode normalization and zero-width stripping.
+- **Step 11.2 (Edge Proxy Pilot & Witness):** `EdgePilotMonitor` (`packages/edge_proxy/pilot.py`) tracking p50/p95/p99 latency percentiles, fail-open logging, and planned runtime kill-switch reversion (<25ms).
+- **Step 11.3 (Production APM & SLOs):** `APMMetricsBridge` & `SLOAlertEngine` (`packages/core/observability/apm.py`) with concrete SLOs (p95 latency <500ms, probe success rate >99.9%) and incident tabletop rehearsal drill simulator.
+- **Step 11.4 (Multi-Tenant Chaos & Load):** `tests/test_load_chaos_harness.py` simulating 100+ concurrent tenant spikes across Redis atomic counters verifying zero double-billing and reliable global circuit breaker tripping.
+- **Step 11.5 (Postgres Pooling Isolation):** `tests/test_postgres_pooling_rls.py` verifying `SET LOCAL` session setting resets across PgBouncer transaction-mode connection reuse.
+- **Step 11.6 (Stripe Webhook Replay):** `tests/test_stripe_live_webhook_replay.py` testing full 7-stage lifecycle transitions, duplicate redelivery idempotency, and out-of-order delivery.
+- **Post-Phase 11 Audit Score:** **57.2% — Early-Access Only (Upper Tier)**.
+
+---
+
+## 11. Phase 12 — Full-Coverage Hardening (Track 1: Infrastructure)
+
+**Goal:** No checkpoint left below 75. Every remaining "implemented and tested, never run under realistic conditions" item gets its realistic-condition test.
+
+### Step 12.1 — Data & Tenancy: The Last Mile (Checkpoints 1.3, 1.5 → 75+)
+- 12.1.1 Run `migration.py` against a multi-gigabyte synthetic snapshot sized to 12-month growth projection.
+- 12.1.2 Test Redis cluster failover and network partition (split-brain) handling directly — simulate node drops mid-load-test and confirm counters/caches degrade safely to allow-with-alert.
+
+**DoD:** Migration completes and reconciles at 12-month projected data volume; Redis failover test shows no double-billing or unhandled outage.
+
+### Step 12.2 — Auth & Billing: Depth Pass (Checkpoints 2.1, 2.2, 2.4, 2.5 → 75+)
+- 12.2.1 Fuzz all API routes across all HTTP verbs, asserting unauthenticated access is impossible across entire route tree.
+- 12.2.2 Add resource-level scoped permissions (e.g., domain-specific share tokens granting read-only access to a single domain without full organization access).
+- 12.2.3 Embed real-time Stripe billing-portal redirect URLs directly in `BudgetExceededError` JSON responses.
+- 12.2.4 Integrate automated OpenAPI breaking-change drift detection (`oasdiff` or contract linter) into GitHub Actions CI.
+
+**DoD:** Fuzz suite passes with 0 unauthenticated findings; domain-scoped share tokens shipped and tested; contract drift detector blocking PRs on breaking changes.
+
+### Step 12.3 — Cost & Abuse: Full Depth (Checkpoints 3.2–3.6 → 75+)
+- 12.3.1 Multi-provider simultaneous degradation chaos test: mock OpenAI + Gemini simultaneous outages, confirm Anthropic/Perplexity continue and DLQ manages both streams.
+- 12.3.2 Deliver real mock incident payloads end-to-end to live Slack channels and PagerDuty endpoints.
+- 12.3.3 Exercise GitHub PR bot against a live sandboxed GitHub repository using GitHub App installation tokens.
+- 12.3.4 Integrate kill switch with remote configuration (LaunchDarkly or remote edge KV) for instant cloud toggling.
+- 12.3.5 Add automated negative test verifying competitor-benchmark data isolation at the database query level.
+
+**DoD:** Multi-provider chaos test passes; live webhook delivery verified; PR bot verified against real sandbox repo; remote kill switch verified; cross-tenant competitor reads rejected.
+
+### Step 12.4 — Edge & MCP: The Remaining Six (Checkpoints 4.1, 4.2, 4.4, 4.5, 4.6, 4.7 → 75+)
+- 12.4.1 Deploy and benchmark Worker against Cloudflare Workers staging with network-injected origin timeouts.
+- 12.4.2 Extend shadow mode observation to 30 continuous days of traffic analytics.
+- 12.4.3 Integrate per-tenant kill switch with Cloudflare Workers KV for sub-second edge propagation.
+- 12.4.4 Sustained burst load test of MCP server over stdio and SSE transports.
+- 12.4.5 Independent external red-team pass on MCP tool inputs with zero open critical/high findings.
+- 12.4.6 Explicitly test adversarial injection targeting OS command execution / file modification via MCP arguments.
+
+**DoD:** All 6 edge/MCP checkpoints score 75+; external red-team engagement completed with zero open critical/high findings.
+
+### Step 12.5 — Observability: Close the Loop (Checkpoints 5.1, 5.2 → 75+)
+- 12.5.1 Connect structured JSON telemetry to live OpenTelemetry Collector or Datadog agent in staging.
+- 12.5.2 Configure Kubernetes/ECS readiness probes pointing to `/readyz` in deployment manifest; verify deliberate dependency failures remove instance from rotation.
+
+**DoD:** Staging traffic flowing through APM with end-to-end trace correlation; orchestrator pod lifecycle integrated with `/readyz`.
+
+---
+
+## 12. Phase 13 — External Validation, Compliance & Scale Proof (Track 1: Infrastructure)
+
+**Goal:** Move from internal testing to external, third-party validated assurance (crossing 90%+).
+
+### Step 13.1 — External Security Engagement (Checkpoints 6.2 → 90+)
+- 13.1.1 Commission comprehensive external penetration test covering auth flows, RLS boundary, edge proxy, GitHub App scopes, and API surface.
+- 13.1.2 Triage every finding; zero open critical/high findings.
+
+**DoD:** External pentest report delivered with all critical/high items closed.
+
+### Step 13.2 — Compliance Track Completion (Checkpoints 6.1, 6.3, 6.4 → 90+)
+- 13.2.1 Kick off SOC2 Type 1 audit (or obtain signed auditor engagement letter with committed completion date).
+- 13.2.2 Implement automated daily data retention cron daemon permanently purging soft-deleted records and expired probe traces.
+- 13.2.3 Add competitor-benchmarking privacy scope agreement to customer Terms of Service click-through flow.
+- 13.2.4 Formalize weekly Dependabot / vulnerability scanning triage cadence.
+
+**DoD:** SOC2 Type 1 engaged/delivered; retention cron daemon active; ToS click-through live; vulnerability scanning reviewed on weekly schedule.
+
+### Step 13.3 — Scale Proof & Chaos Game Day (Checkpoints 3.1, 1.1, 1.2, 5.4 → 90+)
+- 13.3.1 Conduct whole-team Chaos "Game Day" breaking primary database, AZ, and Redis in staging to test live response.
+- 13.3.2 Load test at 5–10x Year-1 tenant volume, monitoring PgBouncer connection pool limits and Redis bandwidth.
+- 13.3.3 Document the next architecture bottleneck before it is reached in production.
+
+**DoD:** Game day completed with written postmortem; 5–10x scale test green with headroom documented.
+
+---
+
+## 13. Phase 14 — Product Excellence (Track 2: Product & UX Quality)
+
+**Goal:** Ensure customer experience, scoring trustworthiness, and onboarding meet the highest quality bar.
+
+### Step 14.1 — Scoring Trustworthiness & Calibration
+- 14.1.1 Re-run correlation validation against latest LLM search grounding patterns across real customer domains.
+- 14.1.2 Publish updated correlation benchmarks and bump scoring version (`score_v0.3`) if weights shift.
+
+### Step 14.2 — Real Usage & UX Quality Pass
+- 14.2.1 Conduct cross-functional bug bash with non-engineering stakeholders across CLI and Web Dashboard.
+- 14.2.2 Rewrite all user-facing error messages (rate limits, budget stops, syntax errors) to provide actionable next steps.
+- 14.2.3 Optimize Web Dashboard p95 load time under accounts with 12+ months of historical scan data.
+- 14.2.4 Accessibility and WCAG 2.1 AA audit on glassmorphic color contrast and keyboard navigation.
+
+### Step 14.3 — Onboarding & Documentation Polish
+- 14.3.1 Cold-start onboarding test: ensure a new user goes from `pip install agentready` to first score in <10 minutes unaided.
+- 14.3.2 Documentation completeness pass: ensure every CLI command, SDK method, and MCP tool includes full copy-paste examples.
+- 14.3.3 Pre-draft incident communication templates (citation-drop explanations, budget alerts, security advisories).
+
+### Step 14.4 — Customer Validation & Unit Economics
+- 14.4.1 Collect structured qualitative feedback and CSAT/NPS from Phase 11 pilot customers.
+- 14.4.2 Analyze retention signals on recurring automated scans.
+- 14.4.3 Re-verify gross margin against actual observed per-tenant LLM probe costs and Redis storage.
+
+**DoD:** Product review sign-off where the team affirmatively answers "we would enthusiastically recommend this to paying customers."
+
+---
+
+## 14. Phase 15 — Final Re-Audit, Graduated Rollout & Hypercare
+
+### Step 15.1 — Full 30-Checkpoint Re-Audit
+- 15.1.1 Re-run the complete 30-checkpoint Production Readiness Scoring Prompt.
+- 15.1.2 Assert overall readiness score is **90%+**, with zero checkpoints below 75.
+
+### Step 15.2 — Graduated GA Rollout
+- 15.2.1 Graduated edge proxy traffic expansion: 10% → 50% → 100% of tenants with real-time kill switch verification.
+- 15.2.2 Graduated rollout for MCP gateway and GitHub PR bot.
+
+### Step 15.3 — 30-Day Hypercare Window
+- 15.3.1 30-day hypercare period: 15-minute PagerDuty response SLA, daily dashboard reviews of fail-open rates and DLQ volumes.
+- 15.3.2 End-of-hypercare postmortem transition into steady-state recurring operational cadence.
+
+**DoD (Final Release):** 90%+ readiness audit confirmed, 100% GA rollout complete, 30-day hypercare successfully concluded.
+
+---
+
+## 15. Readiness Score Trajectory (Phases 0–15)
+
+| Milestone | Readiness Score | Operational State |
+|---|:---:|---|
+| **Original Audit** | 48.0% | Early-Access Only |
+| **Post-Phase 11 (Top GA Gaps)** | 57.2% | Early-Access Only (Upper Tier) |
+| **Post-Phase 12 (Full Coverage Hardening)** | 76.8% | Approaching Production-Ready |
+| **Post-Phase 13 (External Validation & Scale)** | 91.5% | Production-Ready with Monitored Risk |
+| **Post-Phase 14 & 15 (GA & Hypercare)** | **95.0%+** | **Fully Production-Ready & Exceptional Product** |
+
+---
+
+## 16. Master Execution Timeline
 
 ```mermaid
 gantt
-    title Production-Ready Roadmap (indicative)
+    title Master Roadmap: Path to 90%+ Readiness & GA
     dateFormat YYYY-MM-DD
-    section Phase 0
-    Foundations                :2025-01-01, 3d
-    section Phase 1 - PoC
-    Scoring engine              :2025-01-04, 5d
-    Manual probing               :2025-01-09, 5d
-    Correlation test              :2025-01-14, 7d
-    Kill-go decision               :2025-01-21, 2d
-    section Phase 2 - MVP
-    CLI packaging                   :2025-01-23, 7d
-    Automated probing                :2025-01-30, 5d
-    Static dashboard                  :2025-02-04, 5d
-    Public launch                      :2025-02-09, 3d
-    Feedback loop                       :2025-02-12, 21d
-    MVP retro / go decision               :2025-03-05, 3d
-    section Phase 3 - Production
-    Multi-tenant platform                  :2025-03-10, 21d
-    Tracking pipeline                       :2025-03-31, 14d
-    Edge proxy shadow -> pilot -> rollout     :2025-04-14, 28d
-    MCP gateway                                :2025-05-12, 14d
-    Hardening & security review                 :2025-05-26, 14d
-    Enterprise layer                              :2025-06-09, 21d
-    Production launch gate                          :2025-06-30, 5d
-    section Phase 4 - Post-launch
-    Scale validation                                  :2025-07-07, 14d
-    Ongoing cadence begins                              :2025-07-21, 1d
-```
-
----
-
-*Next step: pick any single Step (e.g., 3.3 edge proxy rollout, or 1.1 scoring engine) and I can go one level deeper — exact file layout, function signatures, test file contents, or the Cloudflare Worker code skeleton with the fail-open logic implemented.*
+    section Phase 12 - Full Coverage
+    12.1 Data & Tenancy Last Mile            :2025-06-02, 7d
+    12.2 Auth & Billing Depth Pass           :2025-06-02, 10d
+    12.3 Cost & Abuse Full Depth             :2025-06-09, 14d
+    12.4 Edge & MCP Hardening                :2025-06-09, 21d
+    12.5 Observability Close Loop            :2025-06-16, 5d
+    section Phase 13 - External Validation
+    13.1 External Pentest                    :2025-07-01, 21d
+    13.2 Compliance & Retention Daemon       :2025-07-01, 30d
+    13.3 Chaos Game Day & Scale Proof        :2025-07-14, 10d
+    section Phase 14 - Product Excellence (Parallel)
+    14.1 Scoring Calibration Re-Check        :2025-06-02, 7d
+    14.2 UX Pass & Error Rewrites            :2025-06-16, 10d
+    14.3 Onboarding & Docs Audit             :2025-06-23, 10d
+    14.4 Customer Validation & Margins       :2025-07-01, 14d
+    section Phase 15 - GA Launch & Hypercare
+    15.1 Final 90%+ Re-Audit                 :2025-08-25, 3d
+    15.2 Graduated GA Rollout                :2025-08-28, 14d
+    15.3 30-Day Hypercare Window             :2025-09-11, 30d
+```
