@@ -87,6 +87,62 @@
         }
       }
     },
+    "/api/scores": {
+      "get": {
+        "summary": "Get latest readiness score for domain",
+        "parameters": [
+          {
+            "name": "domain",
+            "in": "query",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Latest score object for the domain",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Score" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/domains": {
+      "get": {
+        "summary": "List tracked domains and historical scores",
+        "responses": {
+          "200": {
+            "description": "List of tracked domains with latest overall scores"
+          }
+        }
+      }
+    },
+    "/api/generate": {
+      "post": {
+        "summary": "Generate /llms.txt and multilingual suites",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "url": { "type": "string" },
+                  "languages": { "type": "array", "items": { "type": "string" } }
+                },
+                "required": ["url"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Generated file dictionary" }
+        }
+      }
+    },
     "/api/badge": {
       "get": {
         "summary": "Generate SVG readiness badge",
@@ -95,18 +151,13 @@
             "name": "domain",
             "in": "query",
             "required": true,
-            "schema": {
-              "type": "string"
-            }
+            "schema": { "type": "string" }
           },
           {
             "name": "label",
             "in": "query",
             "required": false,
-            "schema": {
-              "type": "string",
-              "default": "agent-ready"
-            }
+            "schema": { "type": "string", "default": "agent-ready" }
           }
         ],
         "responses": {
@@ -115,6 +166,70 @@
             "content": {
               "image/svg+xml": {}
             }
+          }
+        }
+      }
+    },
+    "/api/simulate": {
+      "post": {
+        "summary": "Simulate AI agent personas",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "url": { "type": "string" }
+                },
+                "required": ["url"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Persona simulation results" }
+        }
+      }
+    },
+    "/api/compare": {
+      "post": {
+        "summary": "Competitor GEO benchmark comparison",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "target_url": { "type": "string" },
+                  "competitor_urls": { "type": "array", "items": { "type": "string" } }
+                },
+                "required": ["target_url", "competitor_urls"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Head-to-head citation comparison report" }
+        }
+      }
+    },
+    "/api/report": {
+      "get": {
+        "summary": "Executive AI Agent Health Markdown report",
+        "parameters": [
+          {
+            "name": "url",
+            "in": "query",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Markdown formatted executive health report",
+            "content": { "text/markdown": {} }
           }
         }
       }
