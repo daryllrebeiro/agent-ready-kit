@@ -38,6 +38,9 @@ class MockRedisClient:
     def expire(self, key: str, seconds: int):
         self._ttls[key] = time.time() + seconds
 
+    def ping(self) -> bool:
+        return True
+
     def flushall(self):
         self._data.clear()
         self._ttls.clear()
