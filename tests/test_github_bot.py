@@ -23,6 +23,7 @@ def test_github_pr_bot_flow(mock_put, mock_post, mock_get):
     mock_put.return_value.status_code = 201
 
     bot = GitHubPRBot(github_token="ghp_mock_token_12345")
+    bot.registry.register_repo("daryllrebeiro/agent-ready-kit")
     res = bot.create_remediation_pr(
         repo="daryllrebeiro/agent-ready-kit",
         site_url="https://agentready.dev",

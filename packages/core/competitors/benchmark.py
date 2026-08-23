@@ -1,11 +1,17 @@
 """Competitor Generative Engine Optimization (GEO) benchmarking engine."""
 
-from typing import Any, Dict, List
+from enum import Enum
+from typing import Any, Dict, List, Optional
 from packages.core.probes.extractor import extract_domain_from_url
 from packages.core.probes.prompts import STANDARD_PROBE_PROMPTS
 from packages.core.probes.runner import MultiModelProber
 from packages.core.schemas import Score
 from packages.core.scorer import Scorer
+
+
+class BenchmarkPrivacyScope(str, Enum):
+    PRIVATE = "private"
+    ANONYMIZED_AGGREGATE = "anonymized_aggregate"
 
 
 class CompetitorBenchmarkEngine:
@@ -21,6 +27,7 @@ class CompetitorBenchmarkEngine:
         competitor_urls: List[str],
         prompts: List[str] | None = None,
         dry_run: bool = True,
+        privacy_scope: BenchmarkPrivacyScope = BenchmarkPrivacyScope.PRIVATE,
     ) -> Dict[str, Any]:
         """Execute full head-to-head comparison."""
         all_urls = [target_url] + competitor_urls
@@ -72,4 +79,5 @@ class CompetitorBenchmarkEngine:
             "provider_breakdown": provider_citations,
             "readiness_ranking": readiness_ranking,
             "total_prompts_tested": len(test_prompts),
+            "privacy_scope": privacy_scope.value,
         }
