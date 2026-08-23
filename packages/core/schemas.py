@@ -64,3 +64,7 @@ class ProbeResult(BaseModel):
         description="Probe timestamp in UTC",
     )
     metadata: Dict[str, Any] = Field(default_factory=dict, description="Provider model and token usage metadata")
+
+    @property
+    def is_cited(self) -> bool:
+        return len(self.cited_domains) > 0
