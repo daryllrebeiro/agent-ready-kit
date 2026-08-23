@@ -90,6 +90,17 @@ def handle_generate_command(args: argparse.Namespace) -> int:
     elif target_url:
         pages.append(generator.extract_page_summary(target_url))
 
+    if getattr(args, "languages", None):
+        from packages.core.generator_i18n import MultilingualLLMsGenerator
+        i18n_gen = MultilingualLLMsGenerator()
+        langs = [l.strip() for l in args.languages.split(",") if l.strip()]
+        bundle = i18n_gen.generate_multilingual_bundle(site_name, target_url or "https://example.com", languages=langs)
+        written = i18n_gen.write_bundle_to_disk(bundle, args.output_dir or "./public")
+        console.print(f"[bold green][OK] Successfully generated multilingual /llms.txt suite in '{args.output_dir or './public'}':[/bold green]")
+        for rel_p, abs_p in written.items():
+            console.print(f"  - [bold cyan]{rel_p}[/bold cyan] -> {abs_p}")
+        return 0
+
     llms_content = generator.generate_llms_txt(site_name, site_desc, pages)
     jsonld_content = generator.generate_json_ld_template(site_name, target_url, site_desc)
 
@@ -328,6 +339,7 @@ def build_parser() -> argparse.ArgumentParser:
     gen_parser.add_argument("--url", help="Root URL of the website")
     gen_parser.add_argument("--name", help="Site/Product name")
     gen_parser.add_argument("--description", help="Site/Product brief summary")
+    gen_parser.add_argument("--languages", help="Comma-separated language codes for multilingual llms.txt suite (e.g. en,es,ja,de,fr,zh)")
     gen_parser.add_argument("--max-pages", type=int, default=20, help="Maximum number of sitemap pages to include (default: 20)")
     gen_parser.add_argument("--output-dir", "-o", default=".", help="Directory to save generated files (default: current directory)")
 
