@@ -1,22 +1,44 @@
 /**
- * AgentReady Web Dashboard Client Application
+ * AgentReady Web Dashboard v2.0 Client Application
  */
 
 let currentScore = null;
 let currentProbes = [];
+let currentPersonas = null;
 
 document.addEventListener("DOMContentLoaded", () => {
   initEventListeners();
+  initTabNavigation();
   loadTrackedDomains();
 });
 
+function initTabNavigation() {
+  const tabBtns = document.querySelectorAll(".tab-btn");
+  const tabPanes = document.querySelectorAll(".tab-pane");
+
+  tabBtns.forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const targetId = btn.getAttribute("data-tab");
+
+      tabBtns.forEach((b) => b.classList.remove("active"));
+      tabPanes.forEach((p) => p.classList.remove("active"));
+
+      btn.classList.add("active");
+      const targetPane = document.getElementById(targetId);
+      if (targetPane) targetPane.classList.add("active");
+    });
+  });
+}
+
 function initEventListeners() {
   const scanBtn = document.getElementById("scanBtn");
+  const simulateBtn = document.getElementById("simulateBtn");
   const probeBtn = document.getElementById("probeBtn");
   const urlInput = document.getElementById("urlInput");
   const domainSelect = document.getElementById("domainSelect");
-  const exportJsonBtn = document.getElementById("exportJsonBtn");
   const copyFixesBtn = document.getElementById("copyFixesBtn");
+  const runCompareBtn = document.getElementById("runCompareBtn");
+  const downloadReportBtn = document.getElementById("downloadReportBtn");
 
   scanBtn.addEventListener("click", () => {
     const url = urlInput.value.trim();
@@ -28,6 +50,11 @@ function initEventListeners() {
       const url = urlInput.value.trim();
       if (url) runScan(url);
     }
+  });
+
+  simulateBtn.addEventListener("click", () => {
+    const url = urlInput.value.trim();
+    if (url) runSimulate(url);
   });
 
   probeBtn.addEventListener("click", () => {
@@ -43,8 +70,9 @@ function initEventListeners() {
     }
   });
 
-  exportJsonBtn.addEventListener("click", exportCurrentJson);
-  copyFixesBtn.addEventListener("click", copyRemediations);
+  if (copyFixesBtn) copyFixesBtn.addEventListener("click", copyRemediations);
+  if (runCompareBtn) runCompareBtn.addEventListener("click", runCompetitorComparison);
+  if (downloadReportBtn) downloadReportBtn.addEventListener("click", downloadExecutiveReport);
 }
 
 async function loadTrackedDomains() {
@@ -53,7 +81,7 @@ async function loadTrackedDomains() {
     if (!resp.ok) return;
     const domains = await resp.json();
     const select = document.getElementById("domainSelect");
-    select.innerHTML = '<option value="">Tracked Sites...</option>';
+    select.innerHTML = '<option value="">Tracked Domains...</option>';
 
     domains.forEach((d) => {
       const opt = document.createElement("option");
@@ -102,11 +130,8 @@ async function loadDomainProbes(url) {
 
 async function runScan(url) {
   const scanBtn = document.getElementById("scanBtn");
-  const btnText = scanBtn.querySelector(".btn-text");
-  const btnLoader = scanBtn.querySelector(".btn-loader");
-
   scanBtn.disabled = true;
-  btnText.textContent = "Scanning...";
+  scanBtn.innerHTML = '<span class="btn-text">Scanning...</span>';
 
   try {
     const resp = await fetch("/api/scan", {
@@ -114,21 +139,39 @@ async function runScan(url) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ url }),
     });
-
-    if (!resp.ok) {
-      const errData = await resp.json().catch(() => ({}));
-      alert(`Scan failed: ${errData.error || resp.statusText}`);
-      return;
-    }
-
+    if (!resp.ok) throw new Error(`Scan failed with status ${resp.status}`);
     const score = await resp.json();
     renderScoreDashboard(score);
     loadTrackedDomains();
+    runSimulate(url);
   } catch (err) {
-    alert(`Scan network error: ${err.message}`);
+    alert(`Scan error: ${err.message}`);
   } finally {
     scanBtn.disabled = false;
-    btnText.textContent = "Run Scan";
+    scanBtn.innerHTML = '<span class="btn-text">Run Full Scan</span>';
+  }
+}
+
+async function runSimulate(url) {
+  const simulateBtn = document.getElementById("simulateBtn");
+  simulateBtn.disabled = true;
+  simulateBtn.innerHTML = '<span>Simulating...</span>';
+
+  try {
+    const resp = await fetch("/api/simulate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ url }),
+    });
+    if (!resp.ok) throw new Error("Simulation failed");
+    const data = await resp.json();
+    currentPersonas = data;
+    renderPersonas(data);
+  } catch (err) {
+    console.warn("Persona simulation error:", err);
+  } finally {
+    simulateBtn.disabled = false;
+    simulateBtn.innerHTML = '<span>Simulate Personas</span>';
   }
 }
 
@@ -143,258 +186,286 @@ async function runProbe(url) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ url, dry_run: true }),
     });
-
-    if (resp.ok) {
-      const result = await resp.json();
-      loadDomainProbes(url);
-    }
+    if (!resp.ok) throw new Error("Probe failed");
+    loadDomainProbes(url);
   } catch (err) {
-    console.error("Probe error:", err);
+    alert(`Probe error: ${err.message}`);
   } finally {
     probeBtn.disabled = false;
     probeBtn.textContent = "Probe LLMs";
   }
 }
 
+async function runCompetitorComparison() {
+  const targetUrl = document.getElementById("compTargetInput").value.trim() || document.getElementById("urlInput").value.trim();
+  const rawComps = document.getElementById("compUrlsInput").value.trim();
+  const resultsDiv = document.getElementById("battlegroundResults");
+
+  if (!targetUrl || !rawComps) {
+    alert("Please provide both target site and competitor URLs.");
+    return;
+  }
+
+  const compUrls = rawComps.split(",").map((u) => u.trim()).filter(Boolean);
+  resultsDiv.innerHTML = '<p class="empty-state">Running competitor benchmark battles across models...</p>';
+
+  try {
+    const resp = await fetch("/api/compare", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ target_url: targetUrl, competitor_urls: compUrls, dry_run: true }),
+    });
+    if (!resp.ok) throw new Error("Comparison failed");
+    const data = await resp.json();
+    renderCompetitorResults(data);
+  } catch (err) {
+    resultsDiv.innerHTML = `<p class="empty-state" style="color: var(--accent-red)">Error: ${err.message}</p>`;
+  }
+}
+
+function renderCompetitorResults(data) {
+  const container = document.getElementById("battlegroundResults");
+  let tableHtml = `
+    <table class="compare-table">
+      <thead>
+        <tr>
+          <th>Domain</th>
+          <th>Readiness Score</th>
+          <th>Grade</th>
+          <th>Citation Rate</th>
+        </tr>
+      </thead>
+      <tbody>
+  `;
+
+  for (const [domain, stats] of Object.entries(data.competitor_scores || {})) {
+    const isTarget = domain === data.target_domain;
+    const highlight = isTarget ? 'style="font-weight: bold; color: var(--accent-cyan);"' : "";
+    tableHtml += `
+      <tr ${highlight}>
+        <td>${domain} ${isTarget ? "(Target)" : ""}</td>
+        <td>${stats.overall_score || "--"}/100</td>
+        <td><span class="badge badge-info">${stats.grade || "--"}</span></td>
+        <td>${stats.citation_rate_pct || 0}%</td>
+      </tr>
+    `;
+  }
+
+  tableHtml += `
+      </tbody>
+    </table>
+    <div style="margin-top: 16px;">
+      <p><strong>Calculated Citation Win Rate:</strong> <span style="color: var(--accent-green); font-weight: bold;">${data.citation_win_rate_pct || 0}%</span></p>
+    </div>
+  `;
+  container.innerHTML = tableHtml;
+}
+
 function renderScoreDashboard(score) {
   currentScore = score;
 
-  // Overall Score & Gauge
-  const overallScoreEl = document.getElementById("overallScore");
-  const gradeBadgeEl = document.getElementById("gradeBadge");
-  const targetUrlEl = document.getElementById("targetUrlDisplay");
-  const summaryEl = document.getElementById("scoreSummary");
-  const versionEl = document.getElementById("scoreVersion");
+  document.getElementById("overallScore").textContent = score.overall_score.toFixed(0);
+  document.getElementById("gradeBadge").textContent = score.grade;
+  document.getElementById("targetUrlDisplay").textContent = score.url;
+  document.getElementById("scoreSummary").textContent = score.summary || "Complete readiness evaluation calculated.";
+
+  // Update circular gauge
   const gaugeFill = document.getElementById("gaugeFill");
-
-  overallScoreEl.textContent = score.overall_score.toFixed(1);
-  gradeBadgeEl.textContent = score.grade;
-  targetUrlEl.textContent = score.url;
-  summaryEl.textContent = score.summary;
-  versionEl.textContent = score.version || "score_v0.1";
-
-  // SVG circular gauge calculation (circumference is 2 * PI * 50 ~= 314.15)
-  const maxDash = 314.15;
-  const offset = maxDash - (score.overall_score / 100.0) * maxDash;
+  const circumference = 2 * Math.PI * 50;
+  const offset = circumference - (score.overall_score / 100) * circumference;
   gaugeFill.style.strokeDashoffset = offset;
 
-  // Color adjustments based on score
-  if (score.overall_score >= 80) {
-    gaugeFill.style.stroke = "var(--accent-green)";
-    gradeBadgeEl.style.borderColor = "var(--accent-green)";
-    gradeBadgeEl.style.color = "var(--accent-green)";
-  } else if (score.overall_score >= 50) {
-    gaugeFill.style.stroke = "var(--accent-yellow)";
-    gradeBadgeEl.style.borderColor = "var(--accent-yellow)";
-    gradeBadgeEl.style.color = "var(--accent-yellow)";
-  } else {
-    gaugeFill.style.stroke = "var(--accent-red)";
-    gradeBadgeEl.style.borderColor = "var(--accent-red)";
-    gradeBadgeEl.style.color = "var(--accent-red)";
-  }
+  // Render Grade Color
+  const gradeBadge = document.getElementById("gradeBadge");
+  gradeBadge.className = `grade-badge grade-${score.grade.toLowerCase()}`;
 
-  // Render 4 Signals
-  renderSignals(score.components || []);
-
-  // Render Bot Permissions Matrix
-  renderBotMatrix(score.components || []);
-
-  // Render Remediation Checklist
-  renderRemediations(score.recommendations || []);
+  renderSignalsGrid(score.components);
+  renderBotTable(score.components);
+  renderRemediations(score.recommendations);
+  renderMultimodalAndI18n(score);
 }
 
-function renderSignals(components) {
-  const grid = document.getElementById("signalsGrid");
-  grid.innerHTML = "";
+function renderSignalsGrid(components) {
+  const container = document.getElementById("signalsGrid");
+  container.innerHTML = "";
 
-  components.forEach((comp) => {
+  (components || []).forEach((c) => {
     const card = document.createElement("div");
-    card.className = "signal-card";
-
-    let badgeClass = "badge-fail";
-    if (comp.status === "PASS") badgeClass = "badge-pass";
-    else if (comp.status === "WARN") badgeClass = "badge-warn";
+    card.className = "signal-card card";
+    const statusClass = c.status === "PASS" ? "status-pass" : c.status === "WARN" ? "status-warn" : "status-fail";
 
     card.innerHTML = `
       <div class="signal-header">
-        <span class="signal-title">${escapeHtml(comp.display_name)}</span>
-        <span class="badge ${badgeClass}">${comp.status}</span>
+        <span class="signal-title">${c.display_name}</span>
+        <span class="status-pill ${statusClass}">${c.status}</span>
       </div>
-      <div class="mini-bar-bg">
-        <div class="mini-bar-fill" style="width: ${comp.score}%; background: ${
-      comp.score >= 80 ? "var(--accent-green)" : comp.score >= 50 ? "var(--accent-yellow)" : "var(--accent-red)"
-    }"></div>
+      <div class="signal-score-row">
+        <span class="signal-score">${c.score.toFixed(0)}</span>
+        <span class="signal-weight">Weight: ${(c.weight * 100).toFixed(0)}%</span>
       </div>
-      <div style="display: flex; justify-content: space-between; font-size: 0.8rem; color: var(--text-muted);">
-        <span>Score: <strong>${comp.score.toFixed(1)}/100</strong></span>
-        <span>Weight: <strong>${Math.round(comp.weight * 100)}%</strong></span>
-      </div>
-      <p class="signal-details">${escapeHtml(comp.details)}</p>
+      <p class="signal-details">${c.details || ""}</p>
     `;
-    grid.appendChild(card);
+    container.appendChild(card);
   });
 }
 
-function renderBotMatrix(components) {
-  const botComp = components.find((c) => c.name === "bot_permissions");
+function renderBotTable(components) {
+  const botComp = (components || []).find((c) => c.name === "bot_permissions");
   const tbody = document.getElementById("botTableBody");
-  const countBadge = document.getElementById("botCountBadge");
+  tbody.innerHTML = "";
 
-  if (!botComp || !botComp.evidence || !botComp.evidence.bot_status) {
-    tbody.innerHTML = '<tr><td colspan="3" class="text-center">No bot rules found.</td></tr>';
-    countBadge.textContent = "0 Bots";
+  if (!botComp || !botComp.evidence || !botComp.evidence.bots) {
+    tbody.innerHTML = '<tr><td colspan="3" class="text-center">No bot permissions available.</td></tr>';
     return;
   }
 
-  const bots = botComp.evidence.bot_status;
-  const botNames = Object.keys(bots);
-  countBadge.textContent = `${botComp.evidence.allowed_count || 0}/${botNames.length} Allowed`;
+  const bots = botComp.evidence.bots;
+  document.getElementById("botCountBadge").textContent = `${Object.keys(bots).length} AI Crawlers`;
 
-  tbody.innerHTML = "";
-  botNames.forEach((name) => {
-    const info = bots[name];
+  const engineMap = {
+    GPTBot: "OpenAI ChatGPT Search",
+    ClaudeBot: "Anthropic Claude Search",
+    PerplexityBot: "Perplexity AI",
+    "Google-Extended": "Gemini AI Search",
+    Bytespider: "ByteDance / TikTok AI",
+    CCBot: "Common Crawl Dataset",
+  };
+
+  for (const [bot, allowed] of Object.entries(bots)) {
     const tr = document.createElement("tr");
-
-    let statusBadge = `<span class="badge badge-blocked">BLOCKED</span>`;
-    if (info.status === "ALLOWED") {
-      statusBadge = `<span class="badge badge-allowed">ALLOWED</span>`;
-    } else if (info.status === "PARTIAL") {
-      statusBadge = `<span class="badge badge-partial">PARTIAL</span>`;
-    }
+    const statusPill = allowed
+      ? '<span class="status-pill status-pass">ALLOWED</span>'
+      : '<span class="status-pill status-fail">BLOCKED</span>';
 
     tr.innerHTML = `
-      <td><strong>${escapeHtml(name)}</strong></td>
-      <td style="color: var(--text-secondary); font-size: 0.8rem;">${escapeHtml(info.matched_by || "Direct Rule")}</td>
-      <td>${statusBadge}</td>
+      <td><strong>${bot}</strong></td>
+      <td>${engineMap[bot] || "Autonomous LLM"}</td>
+      <td>${statusPill}</td>
     `;
     tbody.appendChild(tr);
-  });
+  }
 }
 
 function renderRemediations(recommendations) {
-  const container = document.getElementById("remediationList");
+  const list = document.getElementById("remediationList");
+  list.innerHTML = "";
+
   if (!recommendations || recommendations.length === 0) {
-    container.innerHTML = '<p class="empty-state">No immediate recommendations — site is well optimized!</p>';
+    list.innerHTML = '<p class="empty-state" style="color: var(--accent-green);">All signals optimized! No urgent actions.</p>';
     return;
   }
 
-  container.innerHTML = "";
   recommendations.forEach((rec, idx) => {
     const item = document.createElement("div");
     item.className = "remediation-item";
     item.innerHTML = `
-      <span class="rec-number">${idx + 1}.</span>
-      <span style="flex: 1;">${escapeHtml(rec)}</span>
+      <span class="rem-num">${idx + 1}</span>
+      <span class="rem-text">${rec}</span>
     `;
-    container.appendChild(item);
+    list.appendChild(item);
   });
+}
+
+function renderPersonas(data) {
+  const container = document.getElementById("personasGrid");
+  const badge = document.getElementById("personaOverallBadge");
+  badge.textContent = `Compatibility: ${data.overall_compatibility || 0}/100`;
+  container.innerHTML = "";
+
+  for (const [key, p] of Object.entries(data.personas || {})) {
+    const card = document.createElement("div");
+    card.className = "persona-card";
+    const statusColor = p.status === "EXCELLENT" ? "var(--accent-green)" : p.status === "MODERATE" ? "var(--accent-yellow)" : "var(--accent-red)";
+
+    let listItems = "";
+    (p.key_strengths || []).forEach((str) => {
+      listItems += `<li>${str}</li>`;
+    });
+
+    card.innerHTML = `
+      <div class="persona-header">
+        <span class="persona-title">${p.name}</span>
+        <span class="persona-score" style="color: ${statusColor};">${p.compatibility_score.toFixed(0)}%</span>
+      </div>
+      <span class="badge badge-info">${p.status}</span>
+      <ul class="persona-list">
+        ${listItems || "<li>Baseline archetype evaluation.</li>"}
+      </ul>
+    `;
+    container.appendChild(card);
+  }
+}
+
+function renderMultimodalAndI18n(score) {
+  const multiComp = (score.components || []).find((c) => c.name === "multimodal_readiness");
+  const i18nComp = (score.components || []).find((c) => c.name === "multilingual_readiness");
+
+  const multiDiv = document.getElementById("multimodalDetails");
+  if (multiDiv) {
+    if (multiComp) {
+      multiDiv.innerHTML = `
+        <p><strong>Score:</strong> ${multiComp.score.toFixed(0)}/100</p>
+        <p>${multiComp.details}</p>
+      `;
+    } else {
+      multiDiv.innerHTML = '<p class="empty-state">Visuals ready for multimodal models.</p>';
+    }
+  }
+
+  const i18nDiv = document.getElementById("i18nDetails");
+  if (i18nDiv) {
+    if (i18nComp) {
+      i18nDiv.innerHTML = `
+        <p><strong>Score:</strong> ${i18nComp.score.toFixed(0)}/100</p>
+        <p>${i18nComp.details}</p>
+      `;
+    } else {
+      i18nDiv.innerHTML = '<p class="empty-state">Default language index configured.</p>';
+    }
+  }
 }
 
 function renderProbes(probes) {
   currentProbes = probes;
   const list = document.getElementById("probeList");
   const countBadge = document.getElementById("probeCountBadge");
-  countBadge.textContent = `${probes.length} probe(s)`;
+  countBadge.textContent = `${probes.length} probes`;
 
   if (!probes || probes.length === 0) {
-    list.innerHTML = '<p class="empty-state">No probe runs recorded yet. Click "Probe LLMs" to test live model citations.</p>';
+    list.innerHTML = '<p class="empty-state">Click "Probe LLMs" above to test real citation behavior across models.</p>';
     return;
   }
 
-  // Update citation share meters
-  updateCitationBars(probes);
-
   list.innerHTML = "";
-  probes.slice(0, 10).forEach((probe) => {
+  probes.slice(0, 10).forEach((p) => {
     const card = document.createElement("div");
     card.className = "probe-card";
-
-    const citedCount = probe.cited_domains ? probe.cited_domains.length : 0;
-    const latency = probe.latency_ms ? `${Math.round(probe.latency_ms)}ms` : "";
+    const statusPill = p.is_cited
+      ? '<span class="status-pill status-pass">CITED</span>'
+      : '<span class="status-pill status-fail">NOT CITED</span>';
 
     card.innerHTML = `
       <div class="probe-meta">
-        <span>Provider: <strong>${escapeHtml(probe.provider.toUpperCase())}</strong></span>
-        <span>Citations: <strong style="color: var(--accent-cyan);">${citedCount} domains</strong> &bull; ${latency}</span>
+        <span><strong>${p.provider}</strong> (${p.model_name || "LLM"})</span>
+        ${statusPill}
       </div>
-      <div class="probe-prompt">"${escapeHtml(probe.prompt)}"</div>
-      <div class="probe-response">${escapeHtml(probe.raw_response.slice(0, 300))}${probe.raw_response.length > 300 ? "..." : ""}</div>
+      <div class="probe-prompt">"${p.prompt}"</div>
+      <div class="probe-response">${(p.raw_response || "").substring(0, 200)}...</div>
     `;
     list.appendChild(card);
   });
 }
 
-function updateCitationBars(probes) {
-  const providerStats = {
-    openai: { total: 0, cited: 0 },
-    anthropic: { total: 0, cited: 0 },
-    gemini: { total: 0, cited: 0 },
-    perplexity: { total: 0, cited: 0 },
-  };
-
-  probes.forEach((p) => {
-    const prov = p.provider.toLowerCase();
-    if (providerStats[prov]) {
-      providerStats[prov].total += 1;
-      if (p.cited_domains && p.cited_domains.length > 0) {
-        providerStats[prov].cited += 1;
-      }
-    }
-  });
-
-  setProviderBar("OpenAI", providerStats.openai);
-  setProviderBar("Claude", providerStats.anthropic);
-  setProviderBar("Gemini", providerStats.gemini);
-  setProviderBar("Perplexity", providerStats.perplexity);
-}
-
-function setProviderBar(idSuffix, stat) {
-  const bar = document.getElementById(`bar${idSuffix}`);
-  const status = document.getElementById(`status${idSuffix}`);
-  if (!bar || !status) return;
-
-  if (stat.total === 0) {
-    bar.style.width = "0%";
-    status.textContent = "Untested";
-    status.style.color = "var(--text-muted)";
-  } else {
-    const pct = Math.round((stat.cited / stat.total) * 100);
-    bar.style.width = `${pct}%`;
-    status.textContent = `${pct}% Cited (${stat.cited}/${stat.total})`;
-    status.style.color = pct > 50 ? "var(--accent-green)" : "var(--accent-cyan)";
-  }
-}
-
-function exportCurrentJson() {
-  if (!currentScore) {
-    alert("No score data to export.");
-    return;
-  }
-  const blob = new Blob([JSON.stringify(currentScore, null, 2)], { type: "application/json" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = `agentready-report-${new Date().toISOString().slice(0, 10)}.json`;
-  a.click();
-}
-
 function copyRemediations() {
-  if (!currentScore || !currentScore.recommendations || currentScore.recommendations.length === 0) {
-    alert("No recommendations to copy.");
-    return;
-  }
+  if (!currentScore || !currentScore.recommendations) return;
   const text = currentScore.recommendations.map((r, i) => `${i + 1}. ${r}`).join("\n");
   navigator.clipboard.writeText(text).then(() => {
-    alert("Remediation checklist copied to clipboard!");
+    alert("Optimization plan copied to clipboard!");
   });
 }
 
-function escapeHtml(str) {
-  if (!str) return "";
-  return String(str)
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#039;");
+function downloadExecutiveReport() {
+  const url = document.getElementById("urlInput").value.trim();
+  if (!url) return;
+  window.open(`/api/report?url=${encodeURIComponent(url)}`, "_blank");
 }

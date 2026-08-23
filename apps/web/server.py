@@ -38,6 +38,9 @@ class DashboardAPIHandler(SimpleHTTPRequestHandler):
             domain = query.get("domain", [""])[0]
             label = query.get("label", ["agent-ready"])[0]
             self.handle_get_badge(domain, label)
+        elif path == "/api/report":
+            url = query.get("url", [""])[0]
+            self.handle_get_report(url)
         elif path == "/openapi.json":
             self.handle_get_openapi()
         elif path == "/docs":
@@ -54,6 +57,10 @@ class DashboardAPIHandler(SimpleHTTPRequestHandler):
             self.handle_post_scan()
         elif path == "/api/probe":
             self.handle_post_probe()
+        elif path == "/api/simulate":
+            self.handle_post_simulate()
+        elif path == "/api/compare":
+            self.handle_post_compare()
         else:
             self.send_error(404, "API endpoint not found")
 
@@ -195,6 +202,56 @@ class DashboardAPIHandler(SimpleHTTPRequestHandler):
                 "probes_run": saved_count,
                 "domain": base_domain,
             })
+        except Exception as e:
+            self.send_json_response({"error": str(e)}, status=500)
+
+    def handle_get_report(self, url: str):
+        from packages.core.reports.health_report import ExecutiveHealthReportGenerator
+        if not url:
+            self.send_json_response({"error": "url parameter required"}, status=400)
+            return
+        try:
+            gen = ExecutiveHealthReportGenerator()
+            report_md = gen.generate_report(url)
+            self.send_response(200)
+            self.send_header("Content-Type", "text/markdown; charset=utf-8")
+            self.send_header("Content-Disposition", "inline; filename=\"agentready_health_report.md\"")
+            self.end_headers()
+            self.wfile.write(report_md.encode("utf-8"))
+        except Exception as e:
+            self.send_json_response({"error": str(e)}, status=500)
+
+    def handle_post_simulate(self):
+        from packages.core.personas.simulator import AgentPersonaSimulator
+        length = int(self.headers.get("Content-Length", 0))
+        body = self.rfile.read(length).decode("utf-8")
+        try:
+            data = json.loads(body)
+            url = data.get("url")
+            if not url:
+                self.send_json_response({"error": "url is required"}, status=400)
+                return
+            sim = AgentPersonaSimulator()
+            res = sim.simulate_all_personas(url)
+            self.send_json_response(res)
+        except Exception as e:
+            self.send_json_response({"error": str(e)}, status=500)
+
+    def handle_post_compare(self):
+        from packages.core.competitors.benchmark import CompetitorBenchmarkEngine
+        length = int(self.headers.get("Content-Length", 0))
+        body = self.rfile.read(length).decode("utf-8")
+        try:
+            data = json.loads(body)
+            target_url = data.get("target_url")
+            competitor_urls = data.get("competitor_urls", [])
+            dry_run = data.get("dry_run", True)
+            if not target_url or not competitor_urls:
+                self.send_json_response({"error": "target_url and competitor_urls are required"}, status=400)
+                return
+            bench = CompetitorBenchmarkEngine()
+            res = bench.compare_domains(target_url, competitor_urls, dry_run=dry_run)
+            self.send_json_response(res)
         except Exception as e:
             self.send_json_response({"error": str(e)}, status=500)
 
