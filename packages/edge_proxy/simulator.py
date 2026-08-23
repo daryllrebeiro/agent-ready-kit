@@ -1,7 +1,8 @@
 """Edge proxy simulation harness for verifying fail-open behavior and bot routing."""
 
 import re
-from typing import Any, Callable, Dict, Optional
+import time
+from typing import Any, Callable, Dict, List, Optional
 
 AI_BOT_PATTERN = re.compile(
     r"(GPTBot|ClaudeBot|PerplexityBot|Claude-Web|ChatGPT-User|Google-Extended|Applebot-Extended|Amazonbot|cohere-ai|CCBot)",
@@ -9,19 +10,39 @@ AI_BOT_PATTERN = re.compile(
 )
 
 
+class EdgeBotRateLimiter:
+    """Token-bucket/window rate limiter applied at CDN edge for crawler traffic."""
+
+    def __init__(self, max_bot_requests_per_minute: int = 120):
+        self.max_rpm = max_bot_requests_per_minute
+        self._history: Dict[str, List[float]] = {}
+
+    def is_rate_limited(self, bot_id: str) -> bool:
+        now = time.time()
+        window_start = now - 60.0
+        calls = [t for t in self._history.get(bot_id, []) if t > window_start]
+        if len(calls) >= self.max_rpm:
+            return True
+        calls.append(now)
+        self._history[bot_id] = calls
+        return False
+
+
 class EdgeProxySimulator:
-    """Simulates edge reverse proxy handling with guaranteed fail-open behavior."""
+    """Simulates edge reverse proxy handling with guaranteed fail-open behavior and bot rate limiting."""
 
     def __init__(
         self,
         shadow_mode: bool = True,
         kill_switch: bool = False,
         fallback_llms_txt: Optional[str] = None,
+        bot_rate_limiter: Optional[EdgeBotRateLimiter] = None,
     ):
         self.shadow_mode = shadow_mode
         self.kill_switch = kill_switch
         self.fallback_llms_txt = fallback_llms_txt
-        self.shadow_logs: list[Dict[str, Any]] = []
+        self.rate_limiter = bot_rate_limiter or EdgeBotRateLimiter()
+        self.shadow_logs: List[Dict[str, Any]] = []
 
     def handle_request(
         self,
@@ -60,9 +81,18 @@ class EdgeProxySimulator:
             resp["headers"]["X-AgentReady-Bypass"] = "true"
             return resp
 
-        # 2. Bot Detection
+        # 2. Bot Detection & Edge Rate Limiting
         is_ai_bot = bool(AI_BOT_PATTERN.search(user_agent))
         requests_markdown = "text/markdown" in accept
+
+        if is_ai_bot:
+            bot_key = f"{user_agent}:{headers.get('CF-Connecting-IP', '0.0.0.0')}"
+            if self.rate_limiter.is_rate_limited(bot_key):
+                return {
+                    "status": 429,
+                    "body": "Too Many Requests: Edge rate limit exceeded for AI Crawler.",
+                    "headers": {"Retry-After": "60", "X-Served-By": "AgentReady-Edge-Proxy"},
+                }
 
         # 3. Shadow Mode
         if self.shadow_mode:

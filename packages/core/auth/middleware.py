@@ -78,18 +78,11 @@ class AuthManager:
             return True
         return False
 
-    def authenticate_header(self, auth_header: Optional[str]) -> Optional[AuthContext]:
-        """Parses Authorization header ('Bearer <key>') and returns AuthContext if valid."""
-        if not auth_header:
+    def resolve_api_key(self, raw_key: str) -> Optional[AuthContext]:
+        """Resolves a raw API key directly and returns AuthContext if valid."""
+        if not raw_key:
             return None
-
-        parts = auth_header.strip().split(" ", 1)
-        if len(parts) != 2 or parts[0].lower() != "bearer":
-            return None
-
-        raw_token = parts[1].strip()
-        hashed = self.hash_key(raw_token)
-
+        hashed = self.hash_key(raw_key.strip())
         meta = self._key_store.get(hashed)
         if not meta or meta.get("revoked"):
             return None
@@ -100,3 +93,14 @@ class AuthManager:
             role=meta["role"],
             scopes=meta["scopes"],
         )
+
+    def authenticate_header(self, auth_header: Optional[str]) -> Optional[AuthContext]:
+        """Parses Authorization header ('Bearer <key>') and returns AuthContext if valid."""
+        if not auth_header:
+            return None
+
+        parts = auth_header.strip().split(" ", 1)
+        if len(parts) != 2 or parts[0].lower() != "bearer":
+            return None
+
+        return self.resolve_api_key(parts[1])

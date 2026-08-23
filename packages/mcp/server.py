@@ -1,9 +1,11 @@
-"""Hosted Model Context Protocol (MCP) Server for AgentReady."""
+"""Hosted Model Context Protocol (MCP) Server for AgentReady with Auth & Rate Limiting."""
 
 import json
 import sys
+import time
 from typing import Any, Dict, List, Optional
 
+from packages.core.auth.middleware import AuthContext, AuthManager, UserRole
 from packages.core.probes.extractor import extract_domain_from_url
 from packages.core.scorer import Scorer
 from packages.mcp.security import detect_prompt_injection, sanitize_mcp_content
@@ -13,11 +15,37 @@ SERVER_NAME = "agentready-mcp-gateway"
 SERVER_VERSION = "0.1.0"
 
 
+class MCPRateLimiter:
+    """In-memory sliding window rate limiter for MCP tenant calls."""
+
+    def __init__(self, max_requests_per_minute: int = 60):
+        self.max_rpm = max_requests_per_minute
+        self._history: Dict[str, List[float]] = {}
+
+    def is_rate_limited(self, tenant_id: str) -> bool:
+        now = time.time()
+        window_start = now - 60.0
+        calls = [t for t in self._history.get(tenant_id, []) if t > window_start]
+        if len(calls) >= self.max_rpm:
+            return True
+        calls.append(now)
+        self._history[tenant_id] = calls
+        return False
+
+
 class MCPServer:
     """JSON-RPC 2.0 compliant Model Context Protocol server exposing AgentReady capabilities."""
 
-    def __init__(self):
+    def __init__(
+        self,
+        auth_manager: Optional[AuthManager] = None,
+        rate_limiter: Optional[MCPRateLimiter] = None,
+        auth_required: bool = False,
+    ):
         self.scorer = Scorer()
+        self.auth_manager = auth_manager or AuthManager()
+        self.rate_limiter = rate_limiter or MCPRateLimiter()
+        self.auth_required = auth_required
         self.tools = [
             {
                 "name": "get_site_readiness",
@@ -64,11 +92,41 @@ class MCPServer:
             },
         ]
 
+    def _extract_auth(self, params: Dict[str, Any]) -> Optional[AuthContext]:
+        api_key = params.get("api_key")
+        if not api_key:
+            meta = params.get("_meta", {})
+            auth_hdr = meta.get("authorization", "")
+            if auth_hdr.startswith("Bearer "):
+                api_key = auth_hdr.split("Bearer ")[1].strip()
+        if api_key:
+            return self.auth_manager.resolve_api_key(api_key)
+        return None
+
     def handle_request(self, request: Dict[str, Any]) -> Dict[str, Any]:
         """Process an MCP JSON-RPC 2.0 request."""
         req_id = request.get("id")
         method = request.get("method")
         params = request.get("params", {})
+
+        # Authentication verification
+        auth_ctx = self._extract_auth(params)
+        if self.auth_required and not auth_ctx:
+            return {
+                "jsonrpc": "2.0",
+                "id": req_id,
+                "error": {"code": -32001, "message": "Unauthorized: valid api_key required"},
+            }
+
+        tenant_id = auth_ctx.tenant_id if auth_ctx else "anonymous"
+
+        # Rate Limiting
+        if self.rate_limiter.is_rate_limited(tenant_id):
+            return {
+                "jsonrpc": "2.0",
+                "id": req_id,
+                "error": {"code": -32002, "message": f"Rate limit exceeded for tenant '{tenant_id}'"},
+            }
 
         if method == "initialize":
             return {
@@ -100,19 +158,21 @@ class MCPServer:
         }
 
     def _execute_tool(self, req_id: Any, name: str, args: Dict[str, Any]) -> Dict[str, Any]:
-        url = args.get("url", "")
+        # Security scan on all string arguments
+        for arg_k, arg_v in args.items():
+            if isinstance(arg_v, str):
+                has_inj, matches = detect_prompt_injection(arg_v)
+                if has_inj:
+                    return {
+                        "jsonrpc": "2.0",
+                        "id": req_id,
+                        "result": {
+                            "isError": True,
+                            "content": [{"type": "text", "text": f"[Security Violation]: Suspicious prompt injection pattern in '{arg_k}': {matches}"}],
+                        },
+                    }
 
-        # Security check on inputs
-        has_injection, matches = detect_prompt_injection(url)
-        if has_injection:
-            return {
-                "jsonrpc": "2.0",
-                "id": req_id,
-                "result": {
-                    "isError": True,
-                    "content": [{"type": "text", "text": f"[Security Violation]: Suspicious prompt injection pattern detected: {matches}"}],
-                },
-            }
+        url = args.get("url", "")
 
         if name == "get_site_readiness":
             try:
