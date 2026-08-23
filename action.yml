@@ -1,0 +1,29 @@
+name: "AgentReady CI/CD Score Gate"
+description: "Audit website AI agent readiness and enforce minimum score thresholds on Pull Requests"
+author: "AgentReady Team"
+inputs:
+  url:
+    description: "Target URL to scan (e.g. preview deployment URL or production)"
+    required: true
+  min_score:
+    description: "Minimum overall score required to pass CI (0-100)"
+    required: false
+    default: "75.0"
+  output_file:
+    description: "Path to write JSON report"
+    required: false
+    default: "agentready-report.json"
+runs:
+  using: "composite"
+  steps:
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.11"
+    - name: Install AgentReady
+      shell: bash
+      run: pip install agentready
+    - name: Run AgentReady Scan
+      shell: bash
+      run: |
+        agentready scan "${{ inputs.url }}" --min-score "${{ inputs.min_score }}" --json --output "${{ inputs.output_file }}"

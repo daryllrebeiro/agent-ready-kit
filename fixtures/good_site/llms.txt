@@ -1,0 +1,13 @@
+# AgentReady
+
+> The missing layer between your website and AI agents.
+
+## Documentation
+
+- [Quickstart](https://agentready.dev/docs/quickstart): 5-minute setup guide to scoring and optimizing your site.
+- [Scoring Rules](https://agentready.dev/docs/scoring): Detailed methodology on how agent-readiness is calculated.
+- [CLI Reference](https://agentready.dev/docs/cli): Command-line options for running CI/CD checks and generating llms.txt.
+
+## Optional
+
+- [Full API Spec](https://agentready.dev/docs/api): Complete endpoints reference for developers.

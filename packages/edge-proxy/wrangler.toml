@@ -1,0 +1,7 @@
+name = "agentready-edge-proxy"
+main = "worker.js"
+compatibility_date = "2026-01-01"
+
+[vars]
+SHADOW_MODE = "true"
+KILL_SWITCH = "false"

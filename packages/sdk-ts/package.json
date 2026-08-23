@@ -1,0 +1,14 @@
+{
+  "name": "@agentready/sdk",
+  "version": "0.1.0",
+  "description": "Official TypeScript SDK for AgentReady: AI Agent Readiness & Generative Engine Optimization",
+  "main": "dist/index.js",
+  "module": "dist/index.mjs",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc"
+  },
+  "keywords": ["agentready", "ai-agents", "llms-txt", "geo", "seo"],
+  "author": "AgentReady Team",
+  "license": "MIT"
+}

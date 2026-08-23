@@ -1,0 +1,142 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "AgentReady REST API",
+    "version": "1.0.0",
+    "description": "API for scoring, probing, generating, and optimizing web content for AI agents, crawlers, and LLM search engines."
+  },
+  "servers": [
+    {
+      "url": "http://localhost:3000",
+      "description": "Local Development Server"
+    },
+    {
+      "url": "https://api.agentready.dev",
+      "description": "Production Cloud Gateway"
+    }
+  ],
+  "paths": {
+    "/api/scan": {
+      "post": {
+        "summary": "Scan a website URL",
+        "description": "Evaluates a target URL across all agent-readiness dimensions and returns a detailed score report.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "url": {
+                    "type": "string",
+                    "format": "uri",
+                    "example": "https://example.com"
+                  }
+                },
+                "required": ["url"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful evaluation score report",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Score"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input parameters"
+          }
+        }
+      }
+    },
+    "/api/probe": {
+      "post": {
+        "summary": "Execute multi-model citation probes",
+        "description": "Probes OpenAI, Anthropic, Gemini, and Perplexity with standardized benchmark discovery prompts.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "url": {
+                    "type": "string",
+                    "example": "https://example.com"
+                  },
+                  "dry_run": {
+                    "type": "boolean",
+                    "default": true
+                  }
+                },
+                "required": ["url"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "List of probe results across providers"
+          }
+        }
+      }
+    },
+    "/api/badge": {
+      "get": {
+        "summary": "Generate SVG readiness badge",
+        "parameters": [
+          {
+            "name": "domain",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "label",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "agent-ready"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Vector SVG badge image",
+            "content": {
+              "image/svg+xml": {}
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Score": {
+        "type": "object",
+        "properties": {
+          "url": { "type": "string" },
+          "version": { "type": "string" },
+          "overall_score": { "type": "number" },
+          "grade": { "type": "string" },
+          "summary": { "type": "string" },
+          "recommendations": {
+            "type": "array",
+            "items": { "type": "string" }
+          }
+        },
+        "required": ["url", "version", "overall_score", "grade", "summary", "recommendations"]
+      }
+    }
+  }
+}

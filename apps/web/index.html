@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AgentReady — AI Agent Readiness & Citation Dashboard</title>
+  <meta name="description" content="Evaluate, optimize, and track your website's agent-readiness score and LLM citation share.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <!-- Ambient background glow -->
+  <div class="glow-orb glow-top-left"></div>
+  <div class="glow-orb glow-bottom-right"></div>
+
+  <div class="app-container">
+    <!-- Header / Nav -->
+    <header class="navbar">
+      <div class="nav-brand">
+        <div class="brand-logo">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/>
+          </svg>
+        </div>
+        <div>
+          <span class="brand-title">AgentReady</span>
+          <span class="brand-badge">v0.1 MVP</span>
+        </div>
+      </div>
+
+      <div class="scan-bar">
+        <div class="input-wrapper">
+          <svg class="search-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+          </svg>
+          <input type="text" id="urlInput" placeholder="Enter website domain or URL (e.g. example.com)" value="https://example.com" />
+        </div>
+        <button id="scanBtn" class="btn btn-primary">
+          <span class="btn-text">Run Scan</span>
+          <span class="btn-loader" style="display: none;"></span>
+        </button>
+        <button id="probeBtn" class="btn btn-secondary">
+          <span>Probe LLMs</span>
+        </button>
+      </div>
+
+      <div class="nav-actions">
+        <select id="domainSelect" class="domain-dropdown">
+          <option value="">Tracked Sites...</option>
+        </select>
+        <button id="exportJsonBtn" class="btn btn-ghost" title="Export JSON Report">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+        </button>
+      </div>
+    </header>
+
+    <!-- Main Dashboard Body -->
+    <main class="dashboard-content">
+      <!-- Top Overview Row -->
+      <section class="overview-grid">
+        <!-- Hero Score Card -->
+        <div class="card hero-score-card">
+          <div class="card-header">
+            <h3>Agent-Readiness Index</h3>
+            <span class="version-tag" id="scoreVersion">score_v0.1</span>
+          </div>
+          <div class="score-display-wrapper">
+            <div class="gauge-container">
+              <svg class="score-gauge" viewBox="0 0 120 120">
+                <circle class="gauge-bg" cx="60" cy="60" r="50"></circle>
+                <circle class="gauge-fill" id="gaugeFill" cx="60" cy="60" r="50"></circle>
+              </svg>
+              <div class="gauge-value">
+                <span class="score-number" id="overallScore">--</span>
+                <span class="score-total">/ 100</span>
+              </div>
+            </div>
+            <div class="grade-container">
+              <div class="grade-badge" id="gradeBadge">--</div>
+              <p class="target-url-display" id="targetUrlDisplay">Scanning target...</p>
+              <p class="score-summary" id="scoreSummary">Select or scan a domain to view readiness diagnostics.</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Citation Share Stats -->
+        <div class="card citation-stats-card">
+          <div class="card-header">
+            <h3>Multi-Model Citation Share</h3>
+            <span class="stat-badge">4 Providers</span>
+          </div>
+          <div class="providers-grid">
+            <div class="provider-stat" id="providerOpenAI">
+              <div class="provider-info">
+                <span class="provider-name">OpenAI (GPT-4o)</span>
+                <span class="provider-status" id="statusOpenAI">--</span>
+              </div>
+              <div class="mini-bar-bg"><div class="mini-bar-fill" id="barOpenAI" style="width: 0%"></div></div>
+            </div>
+
+            <div class="provider-stat" id="providerClaude">
+              <div class="provider-info">
+                <span class="provider-name">Anthropic (Claude)</span>
+                <span class="provider-status" id="statusClaude">--</span>
+              </div>
+              <div class="mini-bar-bg"><div class="mini-bar-fill" id="barClaude" style="width: 0%"></div></div>
+            </div>
+
+            <div class="provider-stat" id="providerGemini">
+              <div class="provider-info">
+                <span class="provider-name">Google Gemini</span>
+                <span class="provider-status" id="statusGemini">--</span>
+              </div>
+              <div class="mini-bar-bg"><div class="mini-bar-fill" id="barGemini" style="width: 0%"></div></div>
+            </div>
+
+            <div class="provider-stat" id="providerPerplexity">
+              <div class="provider-info">
+                <span class="provider-name">Perplexity AI</span>
+                <span class="provider-status" id="statusPerplexity">--</span>
+              </div>
+              <div class="mini-bar-bg"><div class="mini-bar-fill" id="barPerplexity" style="width: 0%"></div></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 4 Core Signals Grid -->
+      <section class="signals-section">
+        <h2 class="section-title">Core Readiness Signals</h2>
+        <div class="signals-grid" id="signalsGrid">
+          <!-- Populated dynamically via JS -->
+        </div>
+      </section>
+
+      <!-- AI Bot Access Matrix & Remediation Section -->
+      <section class="bottom-grid">
+        <!-- AI Bot Permissions Matrix -->
+        <div class="card bot-matrix-card">
+          <div class="card-header">
+            <h3>AI Crawler Permissions (robots.txt)</h3>
+            <span class="badge badge-info" id="botCountBadge">Evaluating Bots</span>
+          </div>
+          <div class="bot-table-wrapper">
+            <table class="bot-table">
+              <thead>
+                <tr>
+                  <th>AI Crawler Bot</th>
+                  <th>Target Engine</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody id="botTableBody">
+                <tr><td colspan="3" class="text-center">No bot permissions loaded yet.</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Remediation Plan Checklist -->
+        <div class="card remediation-card">
+          <div class="card-header">
+            <h3>Actionable Optimization Plan</h3>
+            <button id="copyFixesBtn" class="btn btn-sm btn-ghost">Copy All</button>
+          </div>
+          <div class="remediation-list" id="remediationList">
+            <p class="empty-state">No remediation suggestions available.</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- Live Probe Log -->
+      <section class="probe-log-section">
+        <div class="card probe-log-card">
+          <div class="card-header">
+            <h3>Recent LLM Probe Runs</h3>
+            <span class="badge" id="probeCountBadge">0 probes</span>
+          </div>
+          <div class="probe-list" id="probeList">
+            <p class="empty-state">Click "Probe LLMs" above to test real citation behavior across models.</p>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <!-- Footer -->
+    <footer class="footer">
+      <p>AgentReady Platform &copy; 2026 &bull; Architecture Tenet #3: Pure Versioned Scoring Engine</p>
+    </footer>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
