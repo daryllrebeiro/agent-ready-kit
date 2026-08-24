@@ -308,6 +308,27 @@ class PostgresRLSRepository:
             self.conn.conn.commit()
             return probe_id
 
+    def list_domains(self, tenant_id: str) -> List[Dict[str, Any]]:
+        with self.tenant_context(tenant_id):
+            cur = self.conn.conn.cursor()
+            cur.execute(
+                "SELECT * FROM domains WHERE tenant_id = ? ORDER BY created_at ASC",
+                (tenant_id,),
+            )
+            rows = cur.fetchall()
+            return [dict(r) for r in rows]
+
+    def get_score_history(self, tenant_id: str, domain_url: str, limit: int = 100) -> List[Dict[str, Any]]:
+        with self.tenant_context(tenant_id):
+            domain = self.get_or_create_domain(tenant_id, domain_url)
+            cur = self.conn.conn.cursor()
+            cur.execute(
+                "SELECT * FROM scores WHERE tenant_id = ? AND domain_id = ? ORDER BY scanned_at DESC LIMIT ?",
+                (tenant_id, domain["id"], limit),
+            )
+            rows = cur.fetchall()
+            return [dict(r) for r in rows]
+
     def list_probes(self, tenant_id: str, domain_url: str) -> List[Dict[str, Any]]:
         with self.tenant_context(tenant_id):
             domain = self.get_or_create_domain(tenant_id, domain_url)

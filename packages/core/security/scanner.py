@@ -1,10 +1,12 @@
-"""Automated security posture and vulnerability scanner for AgentReady configurations and CI."""
+"""Automated security posture, SSRF prevention, and vulnerability scanner for AgentReady configurations and CI."""
 
+import ipaddress
 import os
 import re
 import sys
+import urllib.parse
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Tuple
 
 SECRET_PATTERNS = [
     (re.compile(r"sk-[a-zA-Z0-9]{20,}", re.IGNORECASE), "OpenAI API Key"),
@@ -15,6 +17,13 @@ SECRET_PATTERNS = [
     (re.compile(r"https://hooks\.slack\.com/services/T[a-zA-Z0-9_]+/B[a-zA-Z0-9_]+/[a-zA-Z0-9_]+", re.IGNORECASE), "Slack Webhook URL"),
     (re.compile(r"https://discord\.com/api/webhooks/[0-9]+/[a-zA-Z0-9_-]+", re.IGNORECASE), "Discord Webhook URL"),
 ]
+
+BLOCKED_HOSTNAMES = {
+    "localhost",
+    "metadata.google.internal",
+    "instance-data",
+    "169.254.169.254",
+}
 
 
 class SecurityScanner:
@@ -48,6 +57,34 @@ class SecurityScanner:
                         })
         return findings
 
+    @staticmethod
+    def is_safe_public_url(url: str) -> Tuple[bool, str]:
+        """Validates that a URL is a safe public endpoint, preventing SSRF attacks against internal networks."""
+        try:
+            parsed = urllib.parse.urlparse(url.strip())
+            if parsed.scheme not in ["http", "https"]:
+                return False, f"Invalid URL scheme '{parsed.scheme}'. Only http/https supported."
+
+            hostname = (parsed.hostname or "").lower().strip()
+            if not hostname:
+                return False, "Missing hostname in URL."
+
+            if hostname in BLOCKED_HOSTNAMES:
+                return False, f"SSRF Blocked: Prohibited hostname/metadata endpoint '{hostname}'"
+
+            # Check for direct IP address literals
+            try:
+                ip_obj = ipaddress.ip_address(hostname)
+                if ip_obj.is_private or ip_obj.is_loopback or ip_obj.is_link_local or ip_obj.is_multicast or ip_obj.is_reserved:
+                    return False, f"SSRF Blocked: Private or internal IP range '{hostname}'"
+            except ValueError:
+                # Not an IP literal (is a domain name like example.com)
+                pass
+
+            return True, "URL is safe public target."
+        except Exception as e:
+            return False, f"URL validation failed: {str(e)}"
+
     def scan_workspace_tree(self, root_dir: str) -> List[Dict[str, Any]]:
         """Recursively scan codebase for accidental hardcoded secrets."""
         violations = []
@@ -61,15 +98,11 @@ class SecurityScanner:
                     try:
                         with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
                             content = f.read()
-                            # Skip scanning .env.example with dummy placeholders
-                            if file == ".env.example":
-                                continue
                             findings = self.scan_content_for_secrets(content)
-                            for finding in findings:
+                            if findings:
                                 violations.append({
                                     "file": file_path,
-                                    "secret_type": finding["type"],
-                                    "snippet": finding["match"],
+                                    "findings": findings,
                                 })
                     except Exception:
                         pass
@@ -78,12 +111,12 @@ class SecurityScanner:
 
 if __name__ == "__main__":
     scanner = SecurityScanner()
-    workspace = os.getcwd()
-    issues = scanner.scan_workspace_tree(workspace)
-    if issues:
-        print(f"[FAIL] Security CI Gate: Found {len(issues)} exposed secret(s) in codebase:")
-        for iss in issues:
-            print(f"  - {iss['file']}: {iss['secret_type']} ({iss['snippet']})")
+    workspace_root = str(Path(__file__).parent.parent.parent.parent)
+    leaks = scanner.scan_workspace_tree(workspace_root)
+    if leaks:
+        print(f"[SECURITY ALERT] {len(leaks)} files contained potential secrets!")
+        for l in leaks:
+            print(f" - {l['file']}: {l['findings']}")
         sys.exit(1)
     else:
         print("[PASS] Security CI Gate: Zero secrets detected in codebase.")
