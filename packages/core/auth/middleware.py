@@ -5,13 +5,12 @@ that supplies `tenant_id` to PostgreSQL Row-Level Security sessions.
 """
 
 import hashlib
-import hmac
 import secrets
 import time
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from enum import Enum
-from typing import Any, Dict, List, Optional, Set
+from typing import Any
 
 
 class UserRole(str, Enum):
@@ -25,11 +24,11 @@ class AuthContext:
     """Security context derived from validated credentials."""
     tenant_id: str
     org_id: str
-    user_id: Optional[str] = None
+    user_id: str | None = None
     role: UserRole = UserRole.MEMBER
-    scopes: Set[str] = field(default_factory=lambda: {"read", "write"})
-    authenticated_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
-    scoped_domain: Optional[str] = None
+    scopes: set[str] = field(default_factory=lambda: {"read", "write"})
+    authenticated_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+    scoped_domain: str | None = None
 
     def has_permission(self, required_role: UserRole) -> bool:
         hierarchy = {
@@ -49,8 +48,8 @@ class AuthManager:
     """Handles API key generation, SHA-256 hashing, tenant credential resolution, and domain share tokens."""
 
     def __init__(self):
-        self._key_store: Dict[str, Dict[str, Any]] = {}
-        self._share_tokens: Dict[str, Dict[str, Any]] = {}
+        self._key_store: dict[str, dict[str, Any]] = {}
+        self._share_tokens: dict[str, dict[str, Any]] = {}
 
     @staticmethod
     def hash_key(raw_key: str) -> str:
@@ -59,13 +58,15 @@ class AuthManager:
     def generate_api_key(
         self,
         tenant_id: str,
-        org_id: Optional[str] = None,
+        org_id: str | None = None,
         role: UserRole = UserRole.MEMBER,
-        scopes: Optional[List[str]] = None,
+        scopes: list[str] | None = None,
     ) -> str:
-        """Generates a secure API key (prefix `ak_live_`) and stores its SHA-256 hash."""
+        """Generates a secure API key (prefix `ark_live_`, see packages.core.version) and stores its SHA-256 hash."""
+        from packages.core.version import API_KEY_PREFIX
+
         random_secret = secrets.token_urlsafe(32)
-        raw_key = f"ak_live_{random_secret}"
+        raw_key = f"{API_KEY_PREFIX}{random_secret}"
         hashed = self.hash_key(raw_key)
 
         self._key_store[hashed] = {
@@ -73,7 +74,7 @@ class AuthManager:
             "org_id": org_id or tenant_id,
             "role": role,
             "scopes": set(scopes or ["read", "write"]),
-            "created_at": datetime.now(timezone.utc).isoformat(),
+            "created_at": datetime.now(UTC).isoformat(),
             "revoked": False,
         }
         return raw_key
@@ -102,7 +103,7 @@ class AuthManager:
             return True
         return False
 
-    def resolve_api_key(self, raw_key: str) -> Optional[AuthContext]:
+    def resolve_api_key(self, raw_key: str) -> AuthContext | None:
         """Resolves a raw API key or scoped share token directly into an AuthContext."""
         if not raw_key:
             return None
@@ -133,7 +134,7 @@ class AuthManager:
             scopes=meta["scopes"],
         )
 
-    def authenticate_header(self, auth_header: Optional[str]) -> Optional[AuthContext]:
+    def authenticate_header(self, auth_header: str | None) -> AuthContext | None:
         """Parses Authorization header ('Bearer <key>') and returns AuthContext if valid."""
         if not auth_header:
             return None

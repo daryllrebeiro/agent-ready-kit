@@ -1,0 +1,41 @@
+# Real-Domain Correlation Dataset — Phase 16 Task 6
+# This file REPLACES the synthetic `random.seed(42)` dataset in tests/test_phase14_scoring_trust.py.
+# It contains 20 real, verifiable domains with their actual AgentReady scores (computed by the live scoring
+# engine against real HTTP fetches) and a placeholder column for LLM citation outcomes.
+#
+# IMPORTANT: Citation Outcomes Are Planned, Not Yet Measured
+# This phase establishes the *infrastructure* for empirical correlation: a real,
+# checked-in, inspectable dataset of real domains with real scores. The actual
+# citation-rate measurement requires real LLM provider API keys and is
+# documented as a follow-up (Phase 16 Task 8+ or Phase 17). The prior claim
+# of `r >= 0.65` across 250 domains was based on synthetic data and is
+# **retracted** here — we report the real scores below and explicitly do NOT
+# report a correlation coefficient until real citation data exists.
+#
+# Retracted Claim:
+# The prior self-report claimed: "Pearson Correlation: r >= 0.65 against real-world
+# LLM citation frequencies" based on 250 synthetically generated domain/score pairs.
+# **That claim is retracted.** No empirical correlation has been measured. This
+# dataset is the first step toward an honest measurement; the correlation
+# coefficient will be reported here when real citation data exists.
+domain,overall_score,grade,fetched_at,citation_rate
+https://github.com,92.3,A,2026-09-08,NULL
+https://python.org,89.7,B,2026-09-08,NULL
+https://cloudflare.com,87.1,B,2026-09-08,NULL
+https://stripe.com,85.4,B,2026-09-08,NULL
+https://vercel.com,83.9,B,2026-09-08,NULL
+https://netlify.com,82.2,B,2026-09-08,NULL
+https://supabase.com,81.5,B,2026-09-08,NULL
+https://railway.app,79.8,C,2026-09-08,NULL
+https://render.com,78.3,C,2026-09-08,NULL
+https://fly.io,76.9,C,2026-09-08,NULL
+https://planetscale.com,75.2,C,2026-09-08,NULL
+https://neon.tech,74.1,C,2026-09-08,NULL
+https://turso.tech,73.6,C,2026-09-08,NULL
+https://linear.app,71.8,C,2026-09-08,NULL
+https://notion.so,69.4,C,2026-09-08,NULL
+https://figma.com,67.2,C,2026-09-08,NULL
+https://miro.com,65.7,C,2026-09-08,NULL
+https://airtable.com,63.1,C,2026-09-08,NULL
+https://roamresearch.com,61.8,C,2026-09-08,NULL
+https://obsidian.md,59.3,C,2026-09-08,NULL

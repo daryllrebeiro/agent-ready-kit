@@ -7,10 +7,10 @@ Every query operates within a transactional connection setting `app.tenant_id`.
 import json
 import sqlite3
 from contextlib import contextmanager
-from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
-from packages.core.schemas import ProbeResult, Score
+from datetime import UTC, datetime
+from typing import Any
 
+from packages.core.schemas import ProbeResult, Score
 
 POSTGRES_RLS_SCHEMA_DDL = """
 -- Organizations / Tenants Table
@@ -95,14 +95,14 @@ CREATE POLICY tenant_isolation_subscriptions ON subscriptions
 
 class MockPostgresConnection:
     """Emulates a PostgreSQL connection with native session variables and RLS policy enforcement.
-    
+
     Used when connecting without a live external PostgreSQL instance (e.g. in standalone unit testing).
     """
 
-    def __init__(self, memory_db: Optional[sqlite3.Connection] = None):
+    def __init__(self, memory_db: sqlite3.Connection | None = None):
         self.conn = memory_db or sqlite3.connect(":memory:", check_same_thread=False)
         self.conn.row_factory = sqlite3.Row
-        self._current_tenant_id: Optional[str] = None
+        self._current_tenant_id: str | None = None
         self._init_mock_schema()
 
     def _init_mock_schema(self):
@@ -163,14 +163,14 @@ class MockPostgresConnection:
     def set_session_tenant(self, tenant_id: str):
         self._current_tenant_id = tenant_id
 
-    def get_session_tenant(self) -> Optional[str]:
+    def get_session_tenant(self) -> str | None:
         return self._current_tenant_id
 
-    def execute_rls_query(self, query: str, params: tuple = ()) -> List[Dict[str, Any]]:
+    def execute_rls_query(self, query: str, params: tuple = ()) -> list[dict[str, Any]]:
         """Executes a query with strict RLS simulation (rejects operations missing tenant_id context)."""
         if not self._current_tenant_id:
             raise PermissionError("RLS Violation: app.tenant_id session variable is not set.")
-        
+
         cur = self.conn.cursor()
         cur.execute(query, params)
         rows = cur.fetchall()
@@ -187,7 +187,7 @@ class MockPostgresConnection:
 class PostgresRLSRepository:
     """PostgreSQL Repository with connection-level Row-Level Security."""
 
-    def __init__(self, connection: Optional[Any] = None, dsn: Optional[str] = None):
+    def __init__(self, connection: Any | None = None, dsn: str | None = None):
         self.dsn = dsn
         self.conn = connection or MockPostgresConnection()
 
@@ -205,17 +205,18 @@ class PostgresRLSRepository:
                 else:
                     self.conn.set_session_tenant("")
         else:
-            # Live psycopg / asyncpg connection execution
+            # Live psycopg connection: parameterized set_config (SET does not
+            # allow bind params; f-string interpolation here was injectable).
             cursor = self.conn.cursor()
-            cursor.execute(f"SET LOCAL app.tenant_id = '{tenant_id}';")
+            cursor.execute("SELECT set_config('app.tenant_id', %s, true)", (tenant_id,))
             try:
                 yield self
             finally:
                 cursor.close()
 
-    def create_organization(self, org_id: str, name: str, plan: str = "free") -> Dict[str, Any]:
+    def create_organization(self, org_id: str, name: str, plan: str = "free") -> dict[str, Any]:
         cur = self.conn.conn.cursor()
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
         cur.execute(
             "INSERT INTO organizations (id, name, plan, created_at) VALUES (?, ?, ?, ?)",
             (org_id, name, plan, now),
@@ -223,7 +224,7 @@ class PostgresRLSRepository:
         self.conn.conn.commit()
         return {"id": org_id, "name": name, "plan": plan, "created_at": now}
 
-    def get_or_create_domain(self, tenant_id: str, domain_url: str) -> Dict[str, Any]:
+    def get_or_create_domain(self, tenant_id: str, domain_url: str) -> dict[str, Any]:
         with self.tenant_context(tenant_id):
             cur = self.conn.conn.cursor()
             cur.execute(
@@ -233,9 +234,11 @@ class PostgresRLSRepository:
             row = cur.fetchone()
             if row:
                 return dict(row)
-            
-            domain_id = f"dom_{abs(hash(tenant_id + domain_url))}"
-            now = datetime.now(timezone.utc).isoformat()
+
+            import uuid
+
+            domain_id = f"dom_{uuid.uuid4().hex[:16]}"
+            now = datetime.now(UTC).isoformat()
             cur.execute(
                 "INSERT INTO domains (id, tenant_id, domain_url, created_at) VALUES (?, ?, ?, ?)",
                 (domain_id, tenant_id, domain_url, now),
@@ -245,9 +248,11 @@ class PostgresRLSRepository:
 
     def save_score(self, tenant_id: str, domain_url: str, score: Score) -> str:
         with self.tenant_context(tenant_id):
+            import uuid
+
             domain = self.get_or_create_domain(tenant_id, domain_url)
-            score_id = f"sc_{abs(hash(domain['id'] + str(datetime.now(timezone.utc).timestamp())))}"
-            now = datetime.now(timezone.utc).isoformat()
+            score_id = f"sc_{uuid.uuid4().hex[:16]}"
+            now = datetime.now(UTC).isoformat()
             cur = self.conn.conn.cursor()
             cur.execute(
                 """
@@ -268,7 +273,7 @@ class PostgresRLSRepository:
             self.conn.conn.commit()
             return score_id
 
-    def get_latest_score(self, tenant_id: str, domain_url: str) -> Optional[Score]:
+    def get_latest_score(self, tenant_id: str, domain_url: str) -> Score | None:
         with self.tenant_context(tenant_id):
             domain = self.get_or_create_domain(tenant_id, domain_url)
             cur = self.conn.conn.cursor()
@@ -279,14 +284,19 @@ class PostgresRLSRepository:
             row = cur.fetchone()
             if not row:
                 return None
-            data = json.loads(row["raw_json"])
+            # Real Postgres JSONB arrives parsed as dict; SQLite TEXT needs loads.
+            raw = row["raw_json"]
+            data = raw if isinstance(raw, dict) else json.loads(raw)
             return Score(**data)
 
     def save_probe(self, tenant_id: str, domain_url: str, probe: ProbeResult) -> str:
         with self.tenant_context(tenant_id):
+            import uuid
+
             domain = self.get_or_create_domain(tenant_id, domain_url)
-            probe_id = f"pr_{abs(hash(domain['id'] + probe.provider + str(datetime.now(timezone.utc).timestamp())))}"
-            now = datetime.now(timezone.utc).isoformat()
+            probe_id = f"pr_{uuid.uuid4().hex[:16]}"
+            now = datetime.now(UTC).isoformat()
+            model_name = probe.model_name or (probe.metadata or {}).get("model", probe.provider)
             cur = self.conn.conn.cursor()
             cur.execute(
                 """
@@ -298,17 +308,17 @@ class PostgresRLSRepository:
                     tenant_id,
                     domain["id"],
                     probe.provider,
-                    probe.model_name,
+                    model_name,
                     probe.prompt,
                     probe.raw_response,
-                    1 if probe.is_cited else 0,
+                    bool(probe.is_cited),
                     now,
                 ),
             )
             self.conn.conn.commit()
             return probe_id
 
-    def list_domains(self, tenant_id: str) -> List[Dict[str, Any]]:
+    def list_domains(self, tenant_id: str) -> list[dict[str, Any]]:
         with self.tenant_context(tenant_id):
             cur = self.conn.conn.cursor()
             cur.execute(
@@ -318,7 +328,7 @@ class PostgresRLSRepository:
             rows = cur.fetchall()
             return [dict(r) for r in rows]
 
-    def get_score_history(self, tenant_id: str, domain_url: str, limit: int = 100) -> List[Dict[str, Any]]:
+    def get_score_history(self, tenant_id: str, domain_url: str, limit: int = 100) -> list[dict[str, Any]]:
         with self.tenant_context(tenant_id):
             domain = self.get_or_create_domain(tenant_id, domain_url)
             cur = self.conn.conn.cursor()
@@ -329,7 +339,7 @@ class PostgresRLSRepository:
             rows = cur.fetchall()
             return [dict(r) for r in rows]
 
-    def list_probes(self, tenant_id: str, domain_url: str) -> List[Dict[str, Any]]:
+    def list_probes(self, tenant_id: str, domain_url: str) -> list[dict[str, Any]]:
         with self.tenant_context(tenant_id):
             domain = self.get_or_create_domain(tenant_id, domain_url)
             cur = self.conn.conn.cursor()

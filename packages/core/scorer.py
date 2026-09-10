@@ -1,11 +1,10 @@
 """Core scoring orchestrator and aggregation engine."""
 
 import argparse
-import json
-import sys
-from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from datetime import UTC, datetime
+from typing import Any
 from urllib.parse import urljoin, urlparse
+
 import requests
 
 from packages.core.checks.bot_permissions import check_bot_permissions
@@ -14,6 +13,11 @@ from packages.core.checks.structured_data import check_structured_data
 from packages.core.checks.token_bloat import check_token_bloat
 from packages.core.config import ALGORITHM_VERSION, DEFAULT_WEIGHTS, get_grade
 from packages.core.schemas import Score, ScoreComponent
+from packages.core.version import AGENTREADY_VERSION
+
+
+class UnsafeTargetError(Exception):
+    """Raised when a fetch target fails SSRF validation."""
 
 
 class Scorer:
@@ -21,10 +25,14 @@ class Scorer:
 
     def __init__(
         self,
-        weights: Optional[Dict[str, float]] = None,
+        weights: dict[str, float] | None = None,
         timeout_seconds: float = 10.0,
-        user_agent: str = "AgentReadyScorer/0.1.0 (+https://github.com/daryllrebeiro/agent-ready-kit)",
+        user_agent: str | None = None,
     ):
+        if user_agent is None:
+            user_agent = (
+                f"AgentReadyScorer/{AGENTREADY_VERSION} (+https://github.com/daryllrebeiro/agent-ready-kit)"
+            )
         self.weights = weights or DEFAULT_WEIGHTS.copy()
         self.timeout_seconds = timeout_seconds
         self.user_agent = user_agent
@@ -36,17 +44,79 @@ class Scorer:
             url = "https://" + url
         return url
 
-    def fetch_resource(self, url: str) -> Dict[str, Any]:
-        """Fetch an HTTP resource safely."""
-        headers = {"User-Agent": self.user_agent}
+    def resolve_and_validate(self, url: str) -> None:
+        """Raise UnsafeTargetError if URL is not a safe public target.
+
+        Validates the literal URL plus DNS-resolved IPs (blocks
+        hostname-of-internal-IP tricks). Redirect targets are re-validated
+        in fetch_resource via a response hook.
+        """
+        from packages.core.security.scanner import SecurityScanner
+
+        ok, reason = SecurityScanner.is_safe_public_url(url)
+        if not ok:
+            raise UnsafeTargetError(reason)
+        hostname = urlparse(url).hostname or ""
         try:
-            resp = requests.get(url, headers=headers, timeout=self.timeout_seconds, allow_redirects=True)
+            import ipaddress
+            import socket
+
+            for info in socket.getaddrinfo(hostname, None):
+                ip = ipaddress.ip_address(info[4][0])
+                if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved or ip.is_multicast:
+                    raise UnsafeTargetError(f"DNS resolves to private address {ip}")
+        except UnsafeTargetError:
+            raise
+        except Exception:
+            # DNS failure -> let requests raise normally (no SSRF bypass:
+            # literal-IP and hostname blocklists already enforced above).
+            pass
+
+    def fetch_resource(self, url: str) -> dict[str, Any]:
+        """Fetch an HTTP resource safely (SSRF-guarded)."""
+        try:
+            self.resolve_and_validate(url)
+        except UnsafeTargetError as e:
+            return {
+                "success": False,
+                "status_code": None,
+                "content": "",
+                "headers": {},
+                "url": url,
+                "error": f"unsafe-target: {e}",
+            }
+        headers = {"User-Agent": self.user_agent}
+
+        def _guard_redirect(response, *args, **kwargs):
+            try:
+                self.resolve_and_validate(response.url)
+            except UnsafeTargetError:
+                # Abort redirect chain by raising inside hook; caught below.
+                raise UnsafeTargetError(f"redirect to unsafe target blocked: {response.url}")
+
+        try:
+            resp = requests.get(
+                url,
+                headers=headers,
+                timeout=self.timeout_seconds,
+                allow_redirects=True,
+                hooks={"response": _guard_redirect},
+            )
             return {
                 "success": resp.status_code < 400,
                 "status_code": resp.status_code,
                 "content": resp.text,
                 "headers": dict(resp.headers),
                 "url": str(resp.url),
+            }
+        except UnsafeTargetError as e:
+            return {
+                "success": False,
+                "status_code": None,
+                "content": "",
+                "headers": {},
+                "url": url,
+                "error": f"unsafe-target: {e}",
             }
         except Exception as e:
             return {
@@ -62,10 +132,10 @@ class Scorer:
         self,
         url: str,
         html_content: str,
-        robots_txt: Optional[str] = None,
-        llms_txt: Optional[str] = None,
-        llms_full_txt: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None,
+        robots_txt: str | None = None,
+        llms_txt: str | None = None,
+        llms_full_txt: str | None = None,
+        metadata: dict[str, Any] | None = None,
     ) -> Score:
         """Score static/fixture payloads without making live network calls."""
         normalized_url = self.normalize_url(url)
@@ -98,7 +168,7 @@ class Scorer:
             weight=self.weights.get("bot_permissions", 0.20),
         )
 
-        components: List[ScoreComponent] = [comp_llms, comp_struct, comp_bloat, comp_bots]
+        components: list[ScoreComponent] = [comp_llms, comp_struct, comp_bloat, comp_bots]
 
         return self.aggregate(normalized_url, components, metadata=metadata)
 
@@ -168,8 +238,8 @@ class Scorer:
     def aggregate(
         self,
         url: str,
-        components: List[ScoreComponent],
-        metadata: Optional[Dict[str, Any]] = None,
+        components: list[ScoreComponent],
+        metadata: dict[str, Any] | None = None,
     ) -> Score:
         """Compute composite score, letter grade, and prioritized recommendations."""
         total_weight = sum(c.weight for c in components) or 1.0
@@ -179,7 +249,7 @@ class Scorer:
         grade = get_grade(overall_score)
 
         # Collect unique recommendations in order of component severity (FAIL first, then WARN)
-        recs: List[str] = []
+        recs: list[str] = []
         # Sort components by lowest score to prioritize fixes
         sorted_components = sorted(components, key=lambda c: (c.score, -c.weight))
         for comp in sorted_components:
@@ -197,16 +267,20 @@ class Scorer:
         else:
             summary = "Low Agent Readiness. Your content risks being skipped, misunderstood, or omitted in AI search citations."
 
+        merged_metadata = dict(metadata or {})
+        merged_metadata.setdefault("weights", {c.name: c.weight for c in components})
+        merged_metadata.setdefault("algorithm_version", ALGORITHM_VERSION)
+
         return Score(
             url=url,
             version=ALGORITHM_VERSION,
-            timestamp=datetime.now(timezone.utc),
+            timestamp=datetime.now(UTC),
             overall_score=overall_score,
             grade=grade,
             components=components,
             summary=summary,
             recommendations=recs,
-            metadata=metadata or {},
+            metadata=merged_metadata,
         )
 
 

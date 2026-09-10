@@ -54,6 +54,7 @@ class ProbeResult(BaseModel):
     """Raw and parsed output from an LLM citation probe."""
 
     provider: str = Field(..., description="Provider name (e.g. openai, anthropic, gemini, perplexity)")
+    model_name: Optional[str] = Field(None, description="Provider model identifier (e.g. gpt-4o)")
     prompt: str = Field(..., description="Query prompt sent to the model")
     raw_response: str = Field(..., description="Unmodified response text verbatim")
     cited_domains: List[str] = Field(default_factory=list, description="Extracted domain citations")

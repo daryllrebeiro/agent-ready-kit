@@ -1,6 +1,7 @@
 """Unit tests for PostgreSQL Native Row-Level Security (RLS) and Migration."""
 
 import pytest
+
 from packages.core.schemas import Score, ScoreComponent
 from packages.core.storage.migration import SQLiteToPostgresMigrator
 from packages.core.storage.postgres_rls import (
@@ -79,28 +80,14 @@ def test_postgres_rls_multi_tenant_isolation_boundary():
 
 
 def test_sqlite_to_postgres_migration(tmp_path):
-    import sqlite3
+    # Seed via the real SQLite repository schema (db.py: domains/scores with
+    # components_json) — the migrator reads that schema, not the legacy
+    # raw_json layout. See M1 P0-1.3.
+
+    from packages.core.storage.repository import StorageRepository
+
     db_file = str(tmp_path / "test_source.db")
-    conn = sqlite3.connect(db_file)
-    conn.execute("""
-    CREATE TABLE domains (
-        id TEXT PRIMARY KEY,
-        domain_url TEXT NOT NULL UNIQUE,
-        created_at TEXT NOT NULL
-    );
-    """)
-    conn.execute("""
-    CREATE TABLE scores (
-        id TEXT PRIMARY KEY,
-        domain_id TEXT NOT NULL,
-        overall_score REAL NOT NULL,
-        grade TEXT NOT NULL,
-        score_version TEXT NOT NULL,
-        raw_json TEXT NOT NULL,
-        scanned_at TEXT NOT NULL
-    );
-    """)
-    conn.execute("INSERT INTO domains (id, domain_url, created_at) VALUES ('d1', 'https://migrated.com', '2026-08-23T00:00:00Z')")
+    repo = StorageRepository(db_path=db_file)
     sample_score = Score(
         url="https://migrated.com",
         overall_score=85.0,
@@ -108,12 +95,9 @@ def test_sqlite_to_postgres_migration(tmp_path):
         components=[],
         recommendations=[],
     )
-    conn.execute(
-        "INSERT INTO scores (id, domain_id, overall_score, grade, score_version, raw_json, scanned_at) VALUES ('s1', 'd1', 85.0, 'B', 'score_v0.2', ?, '2026-08-23T00:00:00Z')",
-        (sample_score.model_dump_json(),),
-    )
-    conn.commit()
-    conn.close()
+    repo.save_score("https://migrated.com", sample_score)
+    repo.conn.commit()
+    repo.conn.close()
 
     target_repo = PostgresRLSRepository()
     migrator = SQLiteToPostgresMigrator(db_file, target_repo)

@@ -1,0 +1,43 @@
+# Phase 16 Tasks 3+4: real infrastructure for local verification.
+# Postgres 16 (RLS-capable engine) + Redis 7. No mocks in this path.
+# Usage: docker compose up -d  →  postgres on 127.0.0.1:5434, redis on 127.0.0.1:6380
+#   (5432/6379 are taken by other local projects on this machine; this stack
+#   uses dedicated ports so verification is isolated and repeatable.)
+#   DATABASE_URL=postgresql://agentready:agentready_dev@127.0.0.1:5434/agentready
+#   REDIS_URL=redis://127.0.0.1:6380/0
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: agentready-postgres
+    environment:
+      POSTGRES_USER: agentready
+      POSTGRES_PASSWORD: agentready_dev
+      POSTGRES_DB: agentready
+    ports:
+      - "5434:5432"
+    volumes:
+      - agentready-pgdata:/var/lib/postgresql/data
+      - ./docker/postgres-init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U agentready -d agentready"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: agentready-redis
+    ports:
+      - "6380:6379"
+    volumes:
+      - agentready-redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  agentready-pgdata:
+  agentready-redisdata:

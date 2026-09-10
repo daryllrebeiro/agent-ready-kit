@@ -3,16 +3,18 @@
 import json
 import sys
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any
 
-from packages.core.auth.middleware import AuthContext, AuthManager, UserRole
-from packages.core.probes.extractor import extract_domain_from_url
+from packages.core.auth.middleware import AuthContext, AuthManager
 from packages.core.scorer import Scorer
 from packages.mcp.security import detect_prompt_injection, sanitize_mcp_content
 
 MCP_PROTOCOL_VERSION = "2024-11-05"
 SERVER_NAME = "agentready-mcp-gateway"
-SERVER_VERSION = "0.1.0"
+try:
+    from packages.core.version import AGENTREADY_VERSION as SERVER_VERSION
+except Exception:  # pragma: no cover - import fallback for packaging shims
+    SERVER_VERSION = "0.1.0"
 
 
 class MCPRateLimiter:
@@ -20,7 +22,7 @@ class MCPRateLimiter:
 
     def __init__(self, max_requests_per_minute: int = 60):
         self.max_rpm = max_requests_per_minute
-        self._history: Dict[str, List[float]] = {}
+        self._history: dict[str, list[float]] = {}
 
     def is_rate_limited(self, tenant_id: str) -> bool:
         now = time.time()
@@ -38,9 +40,9 @@ class MCPServer:
 
     def __init__(
         self,
-        auth_manager: Optional[AuthManager] = None,
-        rate_limiter: Optional[MCPRateLimiter] = None,
-        auth_required: bool = False,
+        auth_manager: AuthManager | None = None,
+        rate_limiter: MCPRateLimiter | None = None,
+        auth_required: bool = True,
     ):
         self.scorer = Scorer()
         self.auth_manager = auth_manager or AuthManager()
@@ -92,7 +94,7 @@ class MCPServer:
             },
         ]
 
-    def _extract_auth(self, params: Dict[str, Any]) -> Optional[AuthContext]:
+    def _extract_auth(self, params: dict[str, Any]) -> AuthContext | None:
         api_key = params.get("api_key")
         if not api_key:
             meta = params.get("_meta", {})
@@ -103,7 +105,7 @@ class MCPServer:
             return self.auth_manager.resolve_api_key(api_key)
         return None
 
-    def handle_request(self, request: Dict[str, Any]) -> Dict[str, Any]:
+    def handle_request(self, request: dict[str, Any]) -> dict[str, Any]:
         """Process an MCP JSON-RPC 2.0 request."""
         req_id = request.get("id")
         method = request.get("method")
@@ -157,7 +159,7 @@ class MCPServer:
             "error": {"code": -32601, "message": f"Method '{method}' not found"},
         }
 
-    def _execute_tool(self, req_id: Any, name: str, args: Dict[str, Any]) -> Dict[str, Any]:
+    def _execute_tool(self, req_id: Any, name: str, args: dict[str, Any]) -> dict[str, Any]:
         # Security scan on all string arguments
         for arg_k, arg_v in args.items():
             if isinstance(arg_v, str):
@@ -206,7 +208,7 @@ class MCPServer:
                 return {
                     "jsonrpc": "2.0",
                     "id": req_id,
-                    "result": {"isError": True, "content": [{"type": "text", "text": f"Error scoring URL: {str(e)}"}]},
+                    "result": {"isError": True, "content": [{"type": "text", "text": f"Error scoring URL: {e!s}"}]},
                 }
 
         elif name == "get_llms_txt":
@@ -269,7 +271,7 @@ def run_stdio_server():
             sys.stdout.write(json.dumps(resp) + "\n")
             sys.stdout.flush()
         except Exception as e:
-            err_resp = {"jsonrpc": "2.0", "id": None, "error": {"code": -32700, "message": f"Parse error: {str(e)}"}}
+            err_resp = {"jsonrpc": "2.0", "id": None, "error": {"code": -32700, "message": f"Parse error: {e!s}"}}
             sys.stdout.write(json.dumps(err_resp) + "\n")
             sys.stdout.flush()
 

@@ -2,15 +2,8 @@
 
 from typing import Dict, List
 
-ALGORITHM_VERSION = "score_v0.1"
-
-# Externalized weights summing to 1.0
-DEFAULT_WEIGHTS: Dict[str, float] = {
-    "llms_txt": 0.30,
-    "structured_data": 0.30,
-    "token_bloat": 0.20,
-    "bot_permissions": 0.20,
-}
+# Single source of truth lives in packages.core.version (Sprint 0.5).
+from packages.core.version import ALGORITHM_VERSION, DEFAULT_WEIGHTS
 
 # Major AI crawlers and scrapers evaluated in robots.txt
 TARGET_AI_BOTS: List[Dict[str, str]] = [

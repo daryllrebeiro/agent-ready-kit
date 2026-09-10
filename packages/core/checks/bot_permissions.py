@@ -1,16 +1,22 @@
 """Check robots.txt permissions and crawling directives for AI agent bots."""
 
-from typing import Any, Dict, List, Optional
+from typing import Any
+
 from packages.core.config import TARGET_AI_BOTS
 from packages.core.schemas import ComponentStatus, ScoreComponent
 
 
-def parse_robots_txt(content: str) -> Dict[str, Any]:
-    """Parse robots.txt into structured user-agent rules and directives."""
+def parse_robots_txt(content: str) -> dict[str, Any]:
+    """Parse robots.txt into structured user-agent rules and directives.
+
+    Consecutive User-agent lines form one group; a User-agent line following
+    a directive starts a new group (per robots.txt group semantics).
+    """
     lines = content.splitlines()
-    rules: Dict[str, Dict[str, Any]] = {}
-    current_agents: List[str] = []
-    sitemaps: List[str] = []
+    rules: dict[str, dict[str, Any]] = {}
+    current_agents: list[str] = []
+    last_line_was_agent = False
+    sitemaps: list[str] = []
 
     for raw_line in lines:
         line = raw_line.strip()
@@ -25,17 +31,24 @@ def parse_robots_txt(content: str) -> Dict[str, Any]:
         val = val.strip()
 
         if key == "user-agent":
+            if not last_line_was_agent:
+                # New group begins — directives must not bleed across groups.
+                current_agents = []
             agent = val.lower()
             if agent not in rules:
                 rules[agent] = {"disallows": [], "allows": [], "crawl_delay": None}
             current_agents.append(agent)
+            last_line_was_agent = True
         elif key == "disallow":
+            last_line_was_agent = False
             for agent in current_agents:
                 rules[agent]["disallows"].append(val)
         elif key == "allow":
+            last_line_was_agent = False
             for agent in current_agents:
                 rules[agent]["allows"].append(val)
         elif key == "crawl-delay":
+            last_line_was_agent = False
             try:
                 delay = float(val)
                 for agent in current_agents:
@@ -43,15 +56,16 @@ def parse_robots_txt(content: str) -> Dict[str, Any]:
             except ValueError:
                 pass
         elif key == "sitemap":
+            last_line_was_agent = False
             sitemaps.append(val)
         else:
-            # Other directive or reset
-            pass
+            # Other directive closes the UA block.
+            last_line_was_agent = False
 
     return {"rules": rules, "sitemaps": sitemaps}
 
 
-def evaluate_bot_permission(agent_name: str, parsed_robots: Dict[str, Any]) -> Dict[str, Any]:
+def evaluate_bot_permission(agent_name: str, parsed_robots: dict[str, Any]) -> dict[str, Any]:
     """Check whether a specific bot is allowed, partially allowed, or blocked."""
     rules = parsed_robots.get("rules", {})
     name_lower = agent_name.lower()
@@ -88,14 +102,14 @@ def evaluate_bot_permission(agent_name: str, parsed_robots: Dict[str, Any]) -> D
 
 
 def check_bot_permissions(
-    robots_content: Optional[str] = None,
+    robots_content: str | None = None,
     exists: bool = False,
-    status_code: Optional[int] = None,
+    status_code: int | None = None,
     weight: float = 0.20,
 ) -> ScoreComponent:
     """Evaluate AI crawler and agent permissions in robots.txt."""
-    recommendations: List[str] = []
-    evidence: Dict[str, Any] = {
+    recommendations: list[str] = []
+    evidence: dict[str, Any] = {
         "exists": exists or bool(robots_content),
         "status_code": status_code,
         "sitemaps": [],
@@ -123,7 +137,7 @@ def check_bot_permissions(
     parsed = parse_robots_txt(robots_content)
     evidence["sitemaps"] = parsed["sitemaps"]
 
-    bot_evaluations: Dict[str, Dict[str, Any]] = {}
+    bot_evaluations: dict[str, dict[str, Any]] = {}
     allowed_count = 0
     blocked_count = 0
     partial_count = 0
@@ -156,16 +170,22 @@ def check_bot_permissions(
     if parsed["sitemaps"]:
         score += 25.0
     else:
-        recommendations.append("Add a `Sitemap: <url>` reference in `robots.txt` to accelerate agent crawling.")
+        recommendations.append(
+            "Add a `Sitemap: <url>` reference in `robots.txt` to accelerate agent crawling."
+        )
 
     # Specific bot recommendations
     for b_name in ["PerplexityBot", "ChatGPT-User", "Claude-Web"]:
         if b_name in bot_evaluations and bot_evaluations[b_name]["status"] == "BLOCKED":
-            recommendations.append(f"Unblock `{b_name}` to allow real-time AI citations and direct user search queries.")
+            recommendations.append(
+                f"Unblock `{b_name}` to allow real-time AI citations and direct user search queries."
+            )
 
     for b_name in ["GPTBot", "ClaudeBot", "Google-Extended"]:
         if b_name in bot_evaluations and bot_evaluations[b_name]["status"] == "BLOCKED":
-            recommendations.append(f"`{b_name}` is blocked. If you want your content indexed for future foundation model training, consider allowing it.")
+            recommendations.append(
+                f"`{b_name}` is blocked. If you want your content indexed for future foundation model training, consider allowing it."
+            )
 
     score = min(100.0, max(0.0, score))
 
@@ -177,7 +197,9 @@ def check_bot_permissions(
         details = f"Partial bot access ({allowed_count} allowed, {blocked_count} blocked)."
     else:
         status = ComponentStatus.FAIL
-        details = f"Major AI bots blocked ({blocked_count} blocked). Website will be invisible to AI search agents."
+        details = (
+            f"Major AI bots blocked ({blocked_count} blocked). Website will be invisible to AI search agents."
+        )
 
     return ScoreComponent(
         name="bot_permissions",

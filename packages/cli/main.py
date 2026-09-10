@@ -11,6 +11,7 @@ from rich.table import Table
 
 from packages.cli.formatters import print_rich_score
 from packages.core.config import ALGORITHM_VERSION
+from packages.core.version import AGENTREADY_VERSION
 from packages.core.correlation import CorrelationHarness
 from packages.core.generator import LLMsGenerator
 from packages.core.probes.extractor import extract_domain_from_url
@@ -18,7 +19,7 @@ from packages.core.probes.runner import MultiModelProber
 from packages.core.scorer import Scorer
 from packages.core.storage.repository import StorageRepository
 
-CLI_VERSION = "0.1.0"
+CLI_VERSION = AGENTREADY_VERSION
 
 
 def handle_scan_command(args: argparse.Namespace) -> int:
@@ -124,9 +125,29 @@ def handle_generate_command(args: argparse.Namespace) -> int:
 
 def handle_probe_command(args: argparse.Namespace) -> int:
     """Execute multi-model probing against a target URL/domain."""
+    from packages.core.errors.humanized import HumanizedError
+    from packages.core.pipeline.budget_enforcer import BudgetEnforcer, BudgetExceededError
+
     console = Console()
+    err_console = Console(stderr=True)
     prober = MultiModelProber()
     storage = StorageRepository()
+
+    # Phase 16 Task 2: pre-call budget stop on the real CLI path. Tenant
+    # resolves from AGENTREADY_TENANT_ID (server-minted key owner) else a
+    # local default. LIMITATION: with the in-process counter backend the
+    # state is per-invocation until Task 4 points it at real Redis.
+    if not args.dry_run:
+        tenant_id = os.environ.get("AGENTREADY_TENANT_ID", "local-cli")
+        units = args.max_prompts * len(prober.providers)
+        try:
+            BudgetEnforcer().check_and_reserve_budget(tenant_id, "free", units_needed=units)
+        except BudgetExceededError as be:
+            herr = HumanizedError.from_budget_exceeded(be.tenant_id, be.limit, be.current)
+            err_console.print(f"[bold red]{herr.title}[/bold red] {herr.explanation}")
+            for step in herr.remediation_steps:
+                err_console.print(f"  - {step}")
+            return 3
 
     target_domain = extract_domain_from_url(args.url)
     console.print(f"[dim]Probing multi-model citations for [bold white]{target_domain}[/bold white]...[/dim]")
@@ -277,7 +298,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    # Scan command
+    # Scan command (v1 core)
     scan_parser = subparsers.add_parser("scan", help="Scan a website for AI agent readiness and citation optimization")
     scan_parser.add_argument("url", help="URL of the website or endpoint to scan")
     scan_parser.add_argument("--min-score", type=float, help="Minimum score threshold (0-100) for CI/CD gates; exits with code 1 if failed")
@@ -286,40 +307,28 @@ def build_parser() -> argparse.ArgumentParser:
     scan_parser.add_argument("--output", "-o", help="Path to write report output")
     scan_parser.add_argument("--timeout", type=float, default=10.0, help="HTTP request timeout in seconds (default: 10.0)")
 
-    # Probe command
-    probe_parser = subparsers.add_parser("probe", help="Probe LLM models to test live citation behavior")
+    # Probe command (v1 core, budget-enforced)
+    probe_parser = subparsers.add_parser("probe", help="Probe LLM models to test live citation behavior (budget-enforced)")
     probe_parser.add_argument("url", help="Target URL or domain to test for citations")
     probe_parser.add_argument("--max-prompts", type=int, default=3, help="Number of benchmark discovery prompts to run")
     probe_parser.add_argument("--dry-run", action="store_true", help="Simulate probes without consuming LLM API keys")
 
-    # Compare command
-    comp_parser = subparsers.add_parser("compare", help="Compare citation share and readiness against competitor domains")
-    comp_parser.add_argument("url", help="Target URL of your domain")
-    comp_parser.add_argument("--competitors", "--vs", nargs="+", required=True, help="One or more competitor URLs/domains")
-    comp_parser.add_argument("--dry-run", action="store_true", default=True, help="Simulate probes without consuming LLM API keys")
+    # Generate command (v1 core)
+    gen_parser = subparsers.add_parser("generate", help="Generate compliant llms.txt and structured metadata templates")
+    gen_parser.add_argument("--sitemap", help="URL to sitemap.xml to auto-discover pages")
+    gen_parser.add_argument("--url", help="Root URL of the website")
+    gen_parser.add_argument("--name", help="Site/Product name")
+    gen_parser.add_argument("--description", help="Site/Product brief summary")
+    gen_parser.add_argument("--languages", help="Comma-separated language codes for multilingual llms.txt suite (e.g. en,es,ja,de,fr,zh)")
+    gen_parser.add_argument("--max-pages", type=int, default=20, help="Maximum number of sitemap pages to include (default: 20)")
+    gen_parser.add_argument("--output-dir", default=".", help="Directory to save generated files (default: current directory)")
 
-    # Batch command
-    batch_parser = subparsers.add_parser("batch", help="Batch scan multiple domains from a text file")
-    batch_parser.add_argument("file", help="File containing list of URLs/domains (one per line)")
-    batch_parser.add_argument("--concurrency", "-c", type=int, default=5, help="Number of parallel workers (default: 5)")
-    batch_parser.add_argument("--output", "-o", help="Path to export CSV report")
-
-    # Dashboard command
+    # Dashboard command (v1 core)
     dash_parser = subparsers.add_parser("dashboard", help="Start local web dashboard")
     dash_parser.add_argument("--port", type=int, default=3000, help="Port to listen on (default: 3000)")
     dash_parser.add_argument("--open", action="store_true", help="Automatically open browser on start")
 
-    # Correlate command
-    subparsers.add_parser("correlate", help="Run hypothesis correlation analysis between scores and citations")
-
-    # Fix command
-    fix_parser = subparsers.add_parser("fix", help="Generate automated drop-in remediation files for a website")
-    fix_parser.add_argument("url", help="Target URL to generate fixes for")
-    fix_parser.add_argument("--name", help="Site/Product name")
-    fix_parser.add_argument("--description", help="Site/Product brief summary")
-    fix_parser.add_argument("--output-dir", "-o", default="./agentready-fixes", help="Output directory (default: ./agentready-fixes)")
-
-    # Auth command
+    # Auth command (v1 core)
     auth_parser = subparsers.add_parser("auth", help="Manage AgentReady API keys and authentication credentials")
     auth_sub = auth_parser.add_subparsers(dest="auth_action", required=True)
 
@@ -329,24 +338,9 @@ def build_parser() -> argparse.ArgumentParser:
     auth_sub.add_parser("whoami", help="View current authenticated credentials")
     auth_sub.add_parser("logout", help="Remove stored API key")
 
-    # Simulate command
-    sim_parser = subparsers.add_parser("simulate", help="Simulate specialized AI agent personas on a website")
-    sim_parser.add_argument("url", help="Target URL to simulate agents on")
-
-    # Report command
-    report_parser = subparsers.add_parser("report", help="Generate an Executive AI Agent Health Report")
-    report_parser.add_argument("url", help="Target URL to generate executive report for")
-    report_parser.add_argument("--output", "-o", help="File path to save the generated markdown report")
-
-    # Generate command
-    gen_parser = subparsers.add_parser("generate", help="Generate compliant llms.txt and structured metadata templates")
-    gen_parser.add_argument("--sitemap", help="URL to sitemap.xml to auto-discover pages")
-    gen_parser.add_argument("--url", help="Root URL of the website")
-    gen_parser.add_argument("--name", help="Site/Product name")
-    gen_parser.add_argument("--description", help="Site/Product brief summary")
-    gen_parser.add_argument("--languages", help="Comma-separated language codes for multilingual llms.txt suite (e.g. en,es,ja,de,fr,zh)")
-    gen_parser.add_argument("--max-pages", type=int, default=20, help="Maximum number of sitemap pages to include (default: 20)")
-    gen_parser.add_argument("--output-dir", default=".", help="Directory to save generated files (default: current directory)")
+    # NOTE: The following commands are NOT in v1 (deferred to Phase 17+):
+    # compare, batch, correlate, fix, simulate, report
+    # They remain in the codebase but are hidden from the v1 CLI surface.
 
     return parser
 
@@ -416,32 +410,25 @@ def handle_auth_command(args: argparse.Namespace) -> int:
 
 
 def cli_entrypoint(argv: Optional[List[str]] = None) -> int:
-    """Main CLI entrypoint."""
+    """Main CLI entrypoint (v1 surface only)."""
     parser = build_parser()
     args = parser.parse_args(argv)
 
+    # v1 core commands
     if args.command == "scan":
         return handle_scan_command(args)
     elif args.command == "probe":
         return handle_probe_command(args)
-    elif args.command == "compare":
-        return handle_compare_command(args)
-    elif args.command == "batch":
-        return handle_batch_command(args)
-    elif args.command == "dashboard":
-        return handle_dashboard_command(args)
-    elif args.command == "correlate":
-        return handle_correlate_command(args)
-    elif args.command == "fix":
-        return handle_fix_command(args)
-    elif args.command == "simulate":
-        return handle_simulate_command(args)
-    elif args.command == "report":
-        return handle_report_command(args)
-    elif args.command == "auth":
-        return handle_auth_command(args)
     elif args.command == "generate":
         return handle_generate_command(args)
+    elif args.command == "dashboard":
+        return handle_dashboard_command(args)
+    elif args.command == "auth":
+        return handle_auth_command(args)
+
+    # Deferred commands (not in v1 surface) — code remains but not exposed
+    # compare, batch, correlate, fix, simulate, report
+    parser.print_help()
     return 0
 
 

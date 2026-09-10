@@ -6,9 +6,11 @@ from packages.core.auth.middleware import AuthManager, UserRole
 def test_auth_manager_api_key_lifecycle():
     auth = AuthManager()
 
-    # 1. Generate key
+    # 1. Generate key (single source: packages.core.version.API_KEY_PREFIX)
+    from packages.core.version import API_KEY_PREFIX
+
     raw_key = auth.generate_api_key(tenant_id="tenant_acme", role=UserRole.ADMIN)
-    assert raw_key.startswith("ak_live_")
+    assert raw_key.startswith(API_KEY_PREFIX)
 
     # 2. Authenticate header with valid Bearer token
     ctx = auth.authenticate_header(f"Bearer {raw_key}")
@@ -19,7 +21,9 @@ def test_auth_manager_api_key_lifecycle():
     assert ctx.has_permission(UserRole.ADMIN) is True
 
     # 3. Test invalid Bearer token
-    invalid_ctx = auth.authenticate_header("Bearer ak_live_invalid_key_123")
+    from packages.core.version import API_KEY_PREFIX as _P
+
+    invalid_ctx = auth.authenticate_header(f"Bearer {_P}invalid_key_123")
     assert invalid_ctx is None
 
     # 4. Test missing or malformed header

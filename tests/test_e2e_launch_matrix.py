@@ -5,19 +5,16 @@ billing sync, MCP execution, edge proxy, and observability health checks.
 """
 
 import json
-import time
-from unittest.mock import MagicMock, patch
 
 from packages.core.auth.middleware import AuthManager, UserRole
 from packages.core.billing.stripe_engine import StripeBillingEngine
-from packages.edge_proxy.simulator import EdgeBotRateLimiter, EdgeProxySimulator
 from packages.core.observability.health import HealthChecker
 from packages.core.observability.logger import TraceContext
 from packages.core.pipeline.budget_enforcer import BudgetEnforcer
 from packages.core.probes.redis_cache import DistributedProbeCache, MockRedisClient
 from packages.core.probes.runner import MultiModelProber
-from packages.core.scorer import Scorer
 from packages.core.storage.repository import StorageRepository
+from packages.edge_proxy.simulator import EdgeBotRateLimiter, EdgeProxySimulator
 from packages.mcp.server import MCPServer
 
 
@@ -33,12 +30,14 @@ def test_e2e_production_launch_matrix():
         # Step 2: Tenant Onboarding & API Key Generation
         tenant_id = "tenant_acme_corp"
         org_id = "org_acme_engineering"
+        from packages.core.version import API_KEY_PREFIX
+
         raw_key = auth_mgr.generate_api_key(
             tenant_id=tenant_id,
             org_id=org_id,
             role=UserRole.ADMIN,
         )
-        assert raw_key.startswith("ak_live_")
+        assert raw_key.startswith(API_KEY_PREFIX)
 
         auth_ctx = auth_mgr.resolve_api_key(raw_key)
         assert auth_ctx is not None

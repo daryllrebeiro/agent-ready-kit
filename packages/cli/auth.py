@@ -2,21 +2,24 @@
 
 import json
 import os
-from typing import Any, Dict, Optional
 
 CREDENTIALS_DIR = os.path.expanduser("~/.agentready")
 CREDENTIALS_FILE = os.path.join(CREDENTIALS_DIR, "credentials.json")
 
 
 def save_api_key(api_key: str) -> None:
-    """Persist API key to user's home directory."""
+    """Persist API key to user's home directory (mode 0600)."""
     os.makedirs(CREDENTIALS_DIR, exist_ok=True)
     data = {"api_key": api_key.strip()}
     with open(CREDENTIALS_FILE, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2)
+    try:
+        os.chmod(CREDENTIALS_FILE, 0o600)
+    except Exception:
+        pass
 
 
-def get_stored_api_key() -> Optional[str]:
+def get_stored_api_key() -> str | None:
     """Retrieve stored API key or from AGENTREADY_API_KEY environment variable."""
     env_key = os.getenv("AGENTREADY_API_KEY")
     if env_key:

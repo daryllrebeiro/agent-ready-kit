@@ -2,22 +2,39 @@
 
 import os
 import sqlite3
-from typing import Optional
-
-DEFAULT_DB_PATH = os.path.join(os.getcwd(), "agentready.db")
 
 
-def get_connection(db_path: Optional[str] = None) -> sqlite3.Connection:
+def _default_db_path() -> str:
+    """Platform-appropriate default (overridable via AGENTREADY_DB_PATH).
+
+    Previously os.getcwd()/agentready.db which polluted whatever directory the
+    CLI happened to run from. Now ~/.agentready/agentready.db.
+    """
+    env = os.environ.get("AGENTREADY_DB_PATH")
+    if env:
+        return env
+    return os.path.join(os.path.expanduser("~/.agentready"), "agentready.db")
+
+
+DEFAULT_DB_PATH = _default_db_path()
+
+
+def get_connection(db_path: str | None = None) -> sqlite3.Connection:
     """Create a thread-safe connection to SQLite database."""
     path = db_path or os.environ.get("AGENTREADY_DB_PATH", DEFAULT_DB_PATH)
+    os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
     conn = sqlite3.connect(path, check_same_thread=False)
+    try:
+        conn.execute("PRAGMA busy_timeout = 5000;")
+    except Exception:
+        pass
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON;")
     conn.execute("PRAGMA journal_mode = WAL;")
     return conn
 
 
-def init_db(conn: Optional[sqlite3.Connection] = None, db_path: Optional[str] = None) -> sqlite3.Connection:
+def init_db(conn: sqlite3.Connection | None = None, db_path: str | None = None) -> sqlite3.Connection:
     """Initialize database tables and indexes."""
     db = conn or get_connection(db_path)
     with db:

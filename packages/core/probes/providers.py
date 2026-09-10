@@ -214,14 +214,15 @@ class GeminiProbe(BaseProbe):
                 metadata={"mode": "simulated" if not api_key else "dry_run", "model": "gemini-2.5-flash"},
             )
 
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={api_key}"
+        url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
         payload = {
             "contents": [{"parts": [{"text": prompt}]}],
             "generationConfig": {"temperature": 0.2},
         }
+        headers = {"x-goog-api-key": api_key, "Content-Type": "application/json"}
 
         try:
-            resp = requests.post(url, json=payload, timeout=self.timeout_seconds)
+            resp = requests.post(url, json=payload, headers=headers, timeout=self.timeout_seconds)
             latency = (time.time() - start_time) * 1000.0
             if resp.status_code == 200:
                 data = resp.json()

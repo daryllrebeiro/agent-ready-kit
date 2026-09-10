@@ -6,6 +6,7 @@ import time
 from http.client import HTTPConnection
 from http.server import HTTPServer
 import pytest
+import apps.web.server as web_server
 from apps.web.server import DashboardAPIHandler
 
 
@@ -21,10 +22,21 @@ def web_v2_server():
     server.server_close()
 
 
-def test_api_simulate_endpoint(web_v2_server):
+@pytest.fixture(scope="module")
+def auth_key(web_v2_server):
+    """Generate an API key for testing."""
+    return web_server.AUTH_MANAGER.generate_api_key(tenant_id="web_v2_test_tenant")
+
+
+def test_api_simulate_endpoint(web_v2_server, auth_key):
     conn = HTTPConnection("127.0.0.1", web_v2_server)
     payload = json.dumps({"url": "https://example.com"})
-    conn.request("POST", "/api/simulate", body=payload, headers={"Content-Type": "application/json"})
+    conn.request(
+        "POST",
+        "/api/simulate",
+        body=payload,
+        headers={"Content-Type": "application/json", "Authorization": f"Bearer {auth_key}"}
+    )
     resp = conn.getresponse()
     assert resp.status == 200
     data = json.loads(resp.read().decode("utf-8"))
@@ -32,14 +44,19 @@ def test_api_simulate_endpoint(web_v2_server):
     assert "personas" in data
 
 
-def test_api_compare_endpoint(web_v2_server):
+def test_api_compare_endpoint(web_v2_server, auth_key):
     conn = HTTPConnection("127.0.0.1", web_v2_server)
     payload = json.dumps({
         "target_url": "https://example.com",
         "competitor_urls": ["https://competitor.com"],
         "dry_run": True,
     })
-    conn.request("POST", "/api/compare", body=payload, headers={"Content-Type": "application/json"})
+    conn.request(
+        "POST",
+        "/api/compare",
+        body=payload,
+        headers={"Content-Type": "application/json", "Authorization": f"Bearer {auth_key}"}
+    )
     resp = conn.getresponse()
     assert resp.status == 200
     data = json.loads(resp.read().decode("utf-8"))
@@ -48,9 +65,13 @@ def test_api_compare_endpoint(web_v2_server):
     assert "readiness_ranking" in data
 
 
-def test_api_report_endpoint(web_v2_server):
+def test_api_report_endpoint(web_v2_server, auth_key):
     conn = HTTPConnection("127.0.0.1", web_v2_server)
-    conn.request("GET", "/api/report?url=https://example.com")
+    conn.request(
+        "GET",
+        "/api/report?url=https://example.com",
+        headers={"Authorization": f"Bearer {auth_key}"}
+    )
     resp = conn.getresponse()
     assert resp.status == 200
     assert "text/markdown" in resp.headers.get("Content-Type", "")

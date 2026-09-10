@@ -2,7 +2,8 @@
 
 import os
 import time
-from typing import Any, Dict, Optional
+from typing import Any
+
 from packages.core.probes.redis_cache import DistributedProbeCache
 from packages.core.storage.repository import StorageRepository
 
@@ -12,24 +13,26 @@ class HealthChecker:
 
     def __init__(
         self,
-        storage: Optional[StorageRepository] = None,
-        cache: Optional[DistributedProbeCache] = None,
+        storage: StorageRepository | None = None,
+        cache: DistributedProbeCache | None = None,
     ):
         self.storage = storage or StorageRepository()
         self.cache = cache or DistributedProbeCache()
 
-    def check_liveness(self) -> Dict[str, Any]:
+    def check_liveness(self) -> dict[str, Any]:
         """Simple liveness probe indicating application server is running."""
+        from packages.core.version import AGENTREADY_VERSION
+
         return {
             "status": "alive",
             "timestamp": time.time(),
             "service": "agentready-core",
-            "version": "1.0.0",
+            "version": AGENTREADY_VERSION,
         }
 
-    def check_readiness(self) -> Dict[str, Any]:
+    def check_readiness(self) -> dict[str, Any]:
         """Deep readiness probe verifying critical dependencies."""
-        checks: Dict[str, Dict[str, Any]] = {}
+        checks: dict[str, dict[str, Any]] = {}
         all_ok = True
 
         # 1. Database storage check
@@ -51,14 +54,20 @@ class HealthChecker:
                 "error": str(e),
             }
 
-        # 2. Redis Cache check
+        # 2. Redis Cache check — MockRedisClient cannot fail by construction,
+        # so label it emulated and do not let it satisfy readiness alone.
         try:
+            from packages.core.probes.redis_cache import MockRedisClient
+
             start_redis = time.time()
             is_connected = self.cache.client.ping()
             redis_latency = round((time.time() - start_redis) * 1000.0, 2)
+            is_emulated = isinstance(self.cache.client, MockRedisClient)
             checks["redis"] = {
                 "status": "UP" if is_connected else "DOWN",
                 "latency_ms": redis_latency,
+                "emulated": is_emulated,
+                "note": "in-process mock; not a real Redis" if is_emulated else "real client",
             }
         except Exception as e:
             all_ok = False

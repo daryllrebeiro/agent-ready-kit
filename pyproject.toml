@@ -15,6 +15,10 @@ dependencies = [
     "beautifulsoup4>=4.12.0",
     "requests>=2.31.0",
     "rich>=13.0.0",
+    # Phase 16 Tasks 3+4: real drivers. The mock wrappers remain for
+    # offline unit tests only; every real path uses these.
+    "psycopg[binary]>=3.1.0",
+    "redis>=5.0.0",
 ]
 
 [project.optional-dependencies]
@@ -31,7 +35,21 @@ agentready = "packages.cli.main:cli_entrypoint"
 where = ["."]
 include = ["packages*"]
 
+[tool.ruff]
+line-length = 110
+target-version = "py311"
+
+[tool.ruff.lint]
+ignore = [
+    "BLE001", # blind except: pre-existing pattern across codebase; tighten incrementally
+    "S110", # try-except-pass: pre-existing; log incrementally
+]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py"]
 pythonpath = ["."]
+markers = [
+    "slow: long-running chaos / load / benchmark suites (separate CI lane)",
+    "integration: tests that require real Postgres/Redis/Stripe infra (opt-in)",
+]

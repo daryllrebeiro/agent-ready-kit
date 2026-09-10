@@ -1,6 +1,7 @@
 """Unit tests for Hosted Model Context Protocol (MCP) server."""
 
 import json
+
 from packages.mcp.security import detect_prompt_injection, sanitize_mcp_content
 from packages.mcp.server import MCPServer
 
@@ -21,14 +22,21 @@ def test_prompt_injection_detection():
 
 
 def test_mcp_initialize_and_tools_list():
-    server = MCPServer()
+    # initialize/tools-list are authenticated by default (M1 secure default);
+    # use an explicit key for functional tests. Anon rejection is covered in
+    # test_mcp_hardening.py::test_mcp_auth_required_mode.
+    from packages.core.auth.middleware import AuthManager
 
-    init_req = {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}}
+    auth_mgr = AuthManager()
+    raw_key = auth_mgr.generate_api_key(tenant_id="t_mcp_list")
+    server = MCPServer(auth_manager=auth_mgr)
+
+    init_req = {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"api_key": raw_key}}
     init_resp = server.handle_request(init_req)
     assert init_resp["result"]["serverInfo"]["name"] == "agentready-mcp-gateway"
     assert init_resp["result"]["protocolVersion"] == "2024-11-05"
 
-    list_req = {"jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": {}}
+    list_req = {"jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": {"api_key": raw_key}}
     list_resp = server.handle_request(list_req)
     tool_names = [t["name"] for t in list_resp["result"]["tools"]]
     assert "get_site_readiness" in tool_names
@@ -37,13 +45,18 @@ def test_mcp_initialize_and_tools_list():
 
 
 def test_mcp_tool_call_readiness():
-    server = MCPServer()
+    from packages.core.auth.middleware import AuthManager
+
+    auth_mgr = AuthManager()
+    raw_key = auth_mgr.generate_api_key(tenant_id="t_mcp_call")
+    server = MCPServer(auth_manager=auth_mgr)
 
     call_req = {
         "jsonrpc": "2.0",
         "id": 3,
         "method": "tools/call",
         "params": {
+            "api_key": raw_key,
             "name": "get_site_readiness",
             "arguments": {"url": "https://example.com"},
         },

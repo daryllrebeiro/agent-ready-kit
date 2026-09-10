@@ -3,10 +3,11 @@
 import hashlib
 import hmac
 import secrets
-from typing import Tuple
+
+from packages.core.version import API_KEY_PREFIX
 
 
-def generate_api_key(prefix: str = "ark_live_") -> Tuple[str, str]:
+def generate_api_key(prefix: str = API_KEY_PREFIX) -> tuple[str, str]:
     """Generate a secure raw API key and its SHA-256 hash for database storage."""
     random_bytes = secrets.token_urlsafe(32)
     raw_key = f"{prefix}{random_bytes}"
