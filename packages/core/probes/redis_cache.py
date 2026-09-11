@@ -68,10 +68,21 @@ class DistributedProbeCache:
         fail_open_on_error: bool = True,
     ):
         # Default TTL is 6 hours (21600 seconds)
-        self.client = redis_client or MockRedisClient()
+        # No explicit client -> shared real Redis when reachable, else the
+        # pre-existing in-process mock (offline behavior, flagged emulated).
+        if redis_client is None:
+            from packages.core.probes.redis_connection import connect_shared
+
+            redis_client = connect_shared()
+        self.client = redis_client
         self.default_ttl = default_ttl_seconds
         self.fail_open_on_error = fail_open_on_error
         self.degraded_mode_events: int = 0
+
+    @property
+    def emulated(self) -> bool:
+        """True when backed by the in-process mock (honest readiness)."""
+        return isinstance(self.client, MockRedisClient)
 
     def _generate_cache_key(self, tenant_id: str, provider: str, prompt: str) -> str:
         prompt_hash = hashlib.sha256(prompt.strip().lower().encode("utf-8")).hexdigest()

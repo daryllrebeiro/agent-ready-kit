@@ -6,7 +6,7 @@ Provides a redis-py client presenting the same interface the mock exposes
 """
 
 import os
-from typing import Optional
+from typing import Any, Optional
 
 try:
     import redis
@@ -22,4 +22,22 @@ def connect_real(url: Optional[str] = None) -> "redis.Redis":
     """Open a real Redis connection (raises if unreachable)."""
     if not _REDIS_AVAILABLE:
         raise RuntimeError("redis-py not installed. Install with: pip install redis")
-    return redis.Redis.from_url(url or DEFAULT_URL, decode_responses=True)
+    client = redis.Redis.from_url(url or DEFAULT_URL, decode_responses=True)
+    client.ping()  # fail fast: unreachable Redis must not masquerade as healthy
+    return client
+
+
+def connect_shared() -> Any:
+    """Shared-cache client for CLI/worker/budget paths.
+
+    Returns a real Redis client when REDIS_URL (or the default local URL)
+    is reachable, else the in-process MockRedisClient. The fallback is the
+    pre-existing offline behavior — callers MUST surface which backend won
+    via DistributedProbeCache.emulated so readiness stays honest.
+    """
+    try:
+        return connect_real()
+    except Exception:
+        from packages.core.probes.redis_cache import MockRedisClient
+
+        return MockRedisClient()
