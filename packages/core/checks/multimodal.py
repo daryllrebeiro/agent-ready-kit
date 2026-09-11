@@ -1,11 +1,23 @@
 """Multimodal content and visual agent readiness evaluation."""
 
-from typing import Any, Dict, List
+from typing import Any
+
 from bs4 import BeautifulSoup
+
 from packages.core.checks.structured_data import extract_json_ld
 from packages.core.schemas import ComponentStatus, ScoreComponent
 
-GENERIC_ALT_TEXTS = {"image", "photo", "img", "untitled", "picture", "graphic", "logo.png", "image.png", "icon"}
+GENERIC_ALT_TEXTS = {
+    "image",
+    "photo",
+    "img",
+    "untitled",
+    "picture",
+    "graphic",
+    "logo.png",
+    "image.png",
+    "icon",
+}
 
 
 def check_multimodal(
@@ -13,8 +25,8 @@ def check_multimodal(
     weight: float = 0.15,
 ) -> ScoreComponent:
     """Evaluate image alt descriptions, video metadata, and visual entity grounding."""
-    recommendations: List[str] = []
-    evidence: Dict[str, Any] = {
+    recommendations: list[str] = []
+    evidence: dict[str, Any] = {
         "total_images": 0,
         "images_with_descriptive_alt": 0,
         "images_missing_alt": 0,
@@ -45,10 +57,9 @@ def check_multimodal(
     missing_alt_count = 0
 
     for img in images:
-        alt = img.get("alt", "").strip()
-        if not alt:
-            missing_alt_count += 1
-        elif alt.lower() in GENERIC_ALT_TEXTS or len(alt) < 4:
+        raw_alt = img.get("alt", "")
+        alt = raw_alt.strip() if isinstance(raw_alt, str) else ""
+        if not alt or alt.lower() in GENERIC_ALT_TEXTS or len(alt) < 4:
             missing_alt_count += 1
         else:
             descriptive_alt_count += 1
@@ -75,14 +86,18 @@ def check_multimodal(
         alt_ratio = descriptive_alt_count / len(images)
         score += alt_ratio * 50.0
         if alt_ratio < 0.7:
-            recommendations.append(f"Add descriptive `alt` text to {missing_alt_count} images for vision-capable AI models.")
+            recommendations.append(
+                f"Add descriptive `alt` text to {missing_alt_count} images for vision-capable AI models."
+            )
 
     # Video Schema (Max 25 pts)
     if video_count > 0:
         score += 25.0
     elif soup.find(["video", "iframe"]):
         score += 10.0
-        recommendations.append("Wrap embedded videos with Schema.org `VideoObject` metadata (name, description, uploadDate, transcript).")
+        recommendations.append(
+            "Wrap embedded videos with Schema.org `VideoObject` metadata (name, description, uploadDate, transcript)."
+        )
     else:
         score += 25.0  # Not a video-dependent page
 
@@ -90,7 +105,9 @@ def check_multimodal(
     if evidence["has_og_image"]:
         score += 25.0
     else:
-        recommendations.append("Define `<meta property=\"og:image\" content=\"...\">` to ensure visual brand previews for chat agents.")
+        recommendations.append(
+            'Define `<meta property="og:image" content="...">` to ensure visual brand previews for chat agents.'
+        )
 
     score = min(100.0, max(0.0, score))
 

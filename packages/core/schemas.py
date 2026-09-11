@@ -1,9 +1,12 @@
 """Data contracts and schemas for the scoring engine and probing pipeline."""
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from enum import Enum
-from typing import Any, Dict, List, Optional
-from pydantic import BaseModel, Field, HttpUrl, field_validator
+from typing import Any
+
+from pydantic import BaseModel, Field, field_validator
+
+from packages.core.version import ALGORITHM_VERSION
 
 
 class ComponentStatus(str, Enum):
@@ -20,26 +23,26 @@ class ScoreComponent(BaseModel):
     score: float = Field(..., ge=0.0, le=100.0, description="Normalized score from 0 to 100")
     weight: float = Field(..., ge=0.0, le=1.0, description="Relative weight in overall calculation")
     status: ComponentStatus = Field(..., description="Status assessment based on score")
-    evidence: Dict[str, Any] = Field(default_factory=dict, description="Structured inspection findings")
+    evidence: dict[str, Any] = Field(default_factory=dict, description="Structured inspection findings")
     details: str = Field("", description="Human-readable explanation of findings")
-    recommendations: List[str] = Field(default_factory=list, description="Actionable remediation steps")
+    recommendations: list[str] = Field(default_factory=list, description="Actionable remediation steps")
 
 
 class Score(BaseModel):
     """Aggregated agent-readiness score for a website or URL."""
 
     url: str = Field(..., description="The target URL analyzed")
-    version: str = Field(default="score_v0.1", description="Semantic algorithm version")
+    version: str = Field(default=ALGORITHM_VERSION, description="Semantic algorithm version")
     timestamp: datetime = Field(
-        default_factory=lambda: datetime.now(timezone.utc),
+        default_factory=lambda: datetime.now(UTC),
         description="Analysis timestamp in UTC",
     )
     overall_score: float = Field(..., ge=0.0, le=100.0, description="Weighted composite score (0-100)")
     grade: str = Field(..., description="Letter grade (A+, A, B, C, D, F)")
-    components: List[ScoreComponent] = Field(..., description="Detailed component breakdown")
+    components: list[ScoreComponent] = Field(..., description="Detailed component breakdown")
     summary: str = Field("", description="Executive summary of agent readiness")
-    recommendations: List[str] = Field(default_factory=list, description="Prioritized recommendations")
-    metadata: Dict[str, Any] = Field(default_factory=dict, description="Execution and response metadata")
+    recommendations: list[str] = Field(default_factory=list, description="Prioritized recommendations")
+    metadata: dict[str, Any] = Field(default_factory=dict, description="Execution and response metadata")
 
     @field_validator("grade", mode="before")
     @classmethod
@@ -54,17 +57,19 @@ class ProbeResult(BaseModel):
     """Raw and parsed output from an LLM citation probe."""
 
     provider: str = Field(..., description="Provider name (e.g. openai, anthropic, gemini, perplexity)")
-    model_name: Optional[str] = Field(None, description="Provider model identifier (e.g. gpt-4o)")
+    model_name: str | None = Field(None, description="Provider model identifier (e.g. gpt-4o)")
     prompt: str = Field(..., description="Query prompt sent to the model")
     raw_response: str = Field(..., description="Unmodified response text verbatim")
-    cited_domains: List[str] = Field(default_factory=list, description="Extracted domain citations")
-    extracted_urls: List[str] = Field(default_factory=list, description="Extracted specific URLs")
-    latency_ms: Optional[float] = Field(None, description="Response latency in milliseconds")
+    cited_domains: list[str] = Field(default_factory=list, description="Extracted domain citations")
+    extracted_urls: list[str] = Field(default_factory=list, description="Extracted specific URLs")
+    latency_ms: float | None = Field(None, description="Response latency in milliseconds")
     timestamp: datetime = Field(
-        default_factory=lambda: datetime.now(timezone.utc),
+        default_factory=lambda: datetime.now(UTC),
         description="Probe timestamp in UTC",
     )
-    metadata: Dict[str, Any] = Field(default_factory=dict, description="Provider model and token usage metadata")
+    metadata: dict[str, Any] = Field(
+        default_factory=dict, description="Provider model and token usage metadata"
+    )
 
     @property
     def is_cited(self) -> bool:

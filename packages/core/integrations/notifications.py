@@ -1,8 +1,9 @@
 """Slack and Discord webhook notification dispatchers for AgentReady alerts."""
 
-import json
-from typing import Any, Dict, Optional
+from typing import Any
+
 import requests
+
 from packages.core.schemas import Score
 
 
@@ -10,9 +11,15 @@ class NotificationDispatcher:
     """Formats and dispatches rich alert payloads to Slack and Discord."""
 
     @staticmethod
-    def build_slack_payload(score: Score, alert_reason: Optional[str] = None) -> Dict[str, Any]:
+    def build_slack_payload(score: Score, alert_reason: str | None = None) -> dict[str, Any]:
         """Format Slack block kit message."""
-        status_emoji = ":white_check_mark:" if score.overall_score >= 80 else ":warning:" if score.overall_score >= 50 else ":x:"
+        status_emoji = (
+            ":white_check_mark:"
+            if score.overall_score >= 80
+            else ":warning:"
+            if score.overall_score >= 50
+            else ":x:"
+        )
         blocks = [
             {
                 "type": "header",
@@ -34,18 +41,20 @@ class NotificationDispatcher:
         ]
 
         if alert_reason:
-            blocks.append({
-                "type": "context",
-                "elements": [{"type": "mrkdwn", "text": f":bell: *Alert Trigger:* {alert_reason}"}],
-            })
+            blocks.append(
+                {
+                    "type": "context",
+                    "elements": [{"type": "mrkdwn", "text": f":bell: *Alert Trigger:* {alert_reason}"}],
+                }
+            )
 
         return {"blocks": blocks}
 
     @staticmethod
-    def build_discord_payload(score: Score, alert_reason: Optional[str] = None) -> Dict[str, Any]:
+    def build_discord_payload(score: Score, alert_reason: str | None = None) -> dict[str, Any]:
         """Format Discord rich embed message."""
         color = 0x22C55E if score.overall_score >= 80 else 0xEAB308 if score.overall_score >= 50 else 0xEF4444
-        embed = {
+        embed: dict[str, Any] = {
             "title": f"AgentReady Score Report: {score.url}",
             "description": score.summary,
             "color": color,
@@ -61,7 +70,7 @@ class NotificationDispatcher:
 
         return {"embeds": [embed]}
 
-    def send_slack(self, webhook_url: str, score: Score, alert_reason: Optional[str] = None) -> bool:
+    def send_slack(self, webhook_url: str, score: Score, alert_reason: str | None = None) -> bool:
         """Send notification to Slack webhook."""
         try:
             payload = self.build_slack_payload(score, alert_reason)
@@ -70,7 +79,7 @@ class NotificationDispatcher:
         except Exception:
             return False
 
-    def send_discord(self, webhook_url: str, score: Score, alert_reason: Optional[str] = None) -> bool:
+    def send_discord(self, webhook_url: str, score: Score, alert_reason: str | None = None) -> bool:
         """Send notification to Discord webhook."""
         try:
             payload = self.build_discord_payload(score, alert_reason)
@@ -105,14 +114,10 @@ def dispatch_dlq_escalation(job: Any) -> bool:
     sent = False
     try:
         if slack_url:
-            resp = requests.post(
-                slack_url, json={"text": text}, timeout=5.0
-            )
+            resp = requests.post(slack_url, json={"text": text}, timeout=5.0)
             sent = sent or resp.status_code == 200
         if discord_url:
-            resp = requests.post(
-                discord_url, json={"content": text}, timeout=5.0
-            )
+            resp = requests.post(discord_url, json={"content": text}, timeout=5.0)
             sent = sent or resp.status_code in (200, 204)
     except Exception:
         return False

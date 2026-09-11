@@ -1,24 +1,24 @@
 """Storage repository interface for domain history, scores, and LLM probes."""
 
 import json
-from datetime import datetime, timezone
 import sqlite3
-from typing import Any, Dict, List, Optional
+from datetime import UTC, datetime
+from typing import Any
 
-from packages.core.schemas import ComponentStatus, ProbeResult, Score, ScoreComponent
-from packages.core.storage.db import get_connection, init_db
+from packages.core.schemas import ProbeResult, Score, ScoreComponent
+from packages.core.storage.db import init_db
 
 
 class StorageRepository:
     """High-level repository for storing and querying scores and probe history."""
 
-    def __init__(self, conn: Optional[sqlite3.Connection] = None, db_path: Optional[str] = None):
+    def __init__(self, conn: sqlite3.Connection | None = None, db_path: str | None = None):
         self.conn = init_db(conn, db_path)
 
-    def get_or_create_domain(self, domain_url: str) -> Dict[str, Any]:
+    def get_or_create_domain(self, domain_url: str) -> dict[str, Any]:
         """Find existing domain or insert a new record."""
         norm_url = domain_url.strip().rstrip("/").lower()
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
         cursor = self.conn.cursor()
         cursor.execute("SELECT * FROM domains WHERE domain_url = ?", (norm_url,))
         row = cursor.fetchone()
@@ -36,7 +36,7 @@ class StorageRepository:
     def save_score(self, domain_url: str, score: Score) -> int:
         """Persist a score report linked to a domain."""
         domain = self.get_or_create_domain(domain_url)
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
 
         components_data = [c.model_dump() for c in score.components]
         cursor = self.conn.cursor()
@@ -64,9 +64,11 @@ class StorageRepository:
         # Update last_scanned_at
         cursor.execute("UPDATE domains SET last_scanned_at = ? WHERE id = ?", (now, domain["id"]))
         self.conn.commit()
+        if score_id is None:
+            raise RuntimeError("INSERT into scores did not produce a row id")
         return score_id
 
-    def get_latest_score(self, domain_url: str) -> Optional[Score]:
+    def get_latest_score(self, domain_url: str) -> Score | None:
         """Fetch the most recent score for a domain."""
         domain = self.get_or_create_domain(domain_url)
         cursor = self.conn.cursor()
@@ -93,7 +95,7 @@ class StorageRepository:
             recommendations=recs,
         )
 
-    def get_score_history(self, domain_url: str, limit: int = 30) -> List[Dict[str, Any]]:
+    def get_score_history(self, domain_url: str, limit: int = 30) -> list[dict[str, Any]]:
         """Fetch score time-series for trend graphs."""
         domain = self.get_or_create_domain(domain_url)
         cursor = self.conn.cursor()
@@ -106,7 +108,7 @@ class StorageRepository:
     def save_probe_run(self, domain_url: str, probe_result: ProbeResult) -> int:
         """Record an LLM citation probe result."""
         domain = self.get_or_create_domain(domain_url)
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
         cursor = self.conn.cursor()
         cursor.execute(
             """
@@ -129,9 +131,11 @@ class StorageRepository:
         probe_id = cursor.lastrowid
         cursor.execute("UPDATE domains SET last_probed_at = ? WHERE id = ?", (now, domain["id"]))
         self.conn.commit()
+        if probe_id is None:
+            raise RuntimeError("INSERT into probe_runs did not produce a row id")
         return probe_id
 
-    def list_domains(self) -> List[Dict[str, Any]]:
+    def list_domains(self) -> list[dict[str, Any]]:
         """List all tracked domains with their latest score."""
         cursor = self.conn.cursor()
         cursor.execute("""
@@ -144,7 +148,7 @@ class StorageRepository:
         """)
         return [dict(r) for r in cursor.fetchall()]
 
-    def get_probe_history(self, domain_url: Optional[str] = None, limit: int = 50) -> List[Dict[str, Any]]:
+    def get_probe_history(self, domain_url: str | None = None, limit: int = 50) -> list[dict[str, Any]]:
         """Retrieve recent probe runs."""
         cursor = self.conn.cursor()
         if domain_url:

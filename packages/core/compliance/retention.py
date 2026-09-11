@@ -6,11 +6,10 @@ Implements SOC 2 Type 1 and GDPR data lifecycle management:
 """
 
 import hashlib
-import time
-from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
-from packages.core.storage.postgres_rls import PostgresRLSRepository
+from datetime import UTC, datetime, timedelta
+from typing import Any
 
+from packages.core.storage.postgres_rls import PostgresRLSRepository
 
 RETENTION_WINDOWS_DAYS = {
     "free": 30,
@@ -25,23 +24,24 @@ class RetentionPurgeDaemon:
     def __init__(self, repository: PostgresRLSRepository):
         self.repo = repository
 
-    def purge_tenant_stale_data(self, tenant_id: str, plan_tier: str = "free") -> Dict[str, Any]:
-        """Purges scores and logs older than the retention window for a given tenant."""
+    def purge_tenant_stale_data(self, tenant_id: str, plan_tier: str = "free") -> dict[str, Any]:
+        """Purges scores and probe runs older than the retention window.
+
+        Executes real scoped DELETEs through the repository and reports
+        actual deleted counts. COMPLETED is returned only when both
+        deletes execute without error.
+        """
         window_days = RETENTION_WINDOWS_DAYS.get(plan_tier.lower(), 30)
-        cutoff_epoch = time.time() - (window_days * 86400)
+        cutoff_iso = (datetime.now(UTC) - timedelta(days=window_days)).isoformat()
 
-        # In PostgreSQL RLS repo, we execute scoped purge queries
-        purged_scores = 0
-        purged_probes = 0
-
-        # Simulate execution against repository records
+        counts = self.repo.purge_stale_records(tenant_id, cutoff_iso)
         return {
             "tenant_id": tenant_id,
             "plan_tier": plan_tier,
             "retention_days": window_days,
-            "cutoff_timestamp": cutoff_epoch,
-            "purged_scores_count": purged_scores,
-            "purged_probes_count": purged_probes,
+            "cutoff_timestamp": cutoff_iso,
+            "purged_scores_count": counts["scores"],
+            "purged_probes_count": counts["probes"],
             "status": "COMPLETED",
         }
 
@@ -50,7 +50,7 @@ class ToSAuditLogger:
     """Immutable audit trail for Terms of Service and Privacy Policy consent."""
 
     def __init__(self):
-        self._audit_trail: List[Dict[str, Any]] = []
+        self._audit_trail: list[dict[str, Any]] = []
 
     def record_consent(
         self,
@@ -59,9 +59,9 @@ class ToSAuditLogger:
         tos_version: str = "2026-08-v1",
         ip_address: str = "192.0.2.1",
         user_agent: str = "Mozilla/5.0",
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Records timestamped, hashed consent record."""
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
         payload_str = f"{tenant_id}:{user_id}:{tos_version}:{now}:{ip_address}"
         consent_hash = hashlib.sha256(payload_str.encode("utf-8")).hexdigest()
 
@@ -77,5 +77,5 @@ class ToSAuditLogger:
         self._audit_trail.append(record)
         return record
 
-    def get_tenant_consent_history(self, tenant_id: str) -> List[Dict[str, Any]]:
+    def get_tenant_consent_history(self, tenant_id: str) -> list[dict[str, Any]]:
         return [r for r in self._audit_trail if r["tenant_id"] == tenant_id]

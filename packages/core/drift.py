@@ -1,22 +1,19 @@
 """Model drift detection and scoring algorithm evolution (score_v0.2)."""
 
-import math
-from typing import Any, Dict, List, Optional
-from packages.core.schemas import Score
+from typing import Any
 
-# Re-calibrated weights for score_v0.2 based on empirical correlation validation
-WEIGHTS_V0_2: Dict[str, float] = {
-    "llms_txt": 0.35,          # Boosted: Strongest empirical citation driver
-    "structured_data": 0.30,   # High entity discovery value
-    "bot_permissions": 0.20,   # Essential baseline gateway
-    "token_bloat": 0.15,       # Supporting optimization
-}
+from packages.core.schemas import Score
+from packages.core.version import ALGORITHM_VERSION_V0_2, EXPERIMENTAL_WEIGHTS_V0_2
+
+# Single weights source lives in packages.core.version; re-exported here
+# for backward compatibility with existing imports.
+WEIGHTS_V0_2 = EXPERIMENTAL_WEIGHTS_V0_2
 
 
 def calculate_distribution_drift(
-    baseline_citations: Dict[str, int],
-    current_citations: Dict[str, int],
-) -> Dict[str, Any]:
+    baseline_citations: dict[str, int],
+    current_citations: dict[str, int],
+) -> dict[str, Any]:
     """
     Measure citation distribution drift across providers.
     Returns divergence score and drift assessment.
@@ -70,7 +67,7 @@ def upgrade_score_to_v0_2(score: Score) -> Score:
 
     return score.model_copy(
         update={
-            "version": "score_v0.2",
+            "version": ALGORITHM_VERSION_V0_2,
             "overall_score": new_overall,
             "grade": get_grade(new_overall),
             "components": new_components,

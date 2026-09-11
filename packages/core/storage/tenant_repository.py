@@ -2,8 +2,8 @@
 
 import json
 import sqlite3
-from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from datetime import UTC, datetime
+from typing import Any
 
 from packages.core.auth.context import TenantContext
 from packages.core.schemas import ProbeResult, Score
@@ -83,9 +83,11 @@ class MultiTenantRepository:
         self.conn.execute("PRAGMA foreign_keys = ON;")
         init_multitenant_db(self.conn)
 
-    def create_organization(self, org_id: str, name: str, tier: str = "growth", monthly_quota: int = 500) -> Dict[str, Any]:
+    def create_organization(
+        self, org_id: str, name: str, tier: str = "growth", monthly_quota: int = 500
+    ) -> dict[str, Any]:
         """Provision a new organization."""
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
         cursor = self.conn.cursor()
         cursor.execute(
             "INSERT INTO organizations (id, name, tier, monthly_quota, created_at) VALUES (?, ?, ?, ?, ?)",
@@ -96,22 +98,25 @@ class MultiTenantRepository:
 
     def register_api_key(self, org_id: str, key_hash: str, name: str = "Default Key") -> int:
         """Register an API key hash for an organization."""
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
         cursor = self.conn.cursor()
         cursor.execute(
             "INSERT INTO api_keys (org_id, key_hash, name, created_at) VALUES (?, ?, ?, ?)",
             (org_id, key_hash, name, now),
         )
         self.conn.commit()
-        return cursor.lastrowid
+        row_id = cursor.lastrowid
+        if row_id is None:
+            raise RuntimeError("INSERT into api_keys did not produce a row id")
+        return row_id
 
-    def add_domain(self, ctx: TenantContext, domain_url: str) -> Dict[str, Any]:
+    def add_domain(self, ctx: TenantContext, domain_url: str) -> dict[str, Any]:
         """Add domain belonging strictly to the authenticated tenant."""
         if not ctx.can_modify_domains():
             raise PermissionError(f"User with role {ctx.role} cannot add domains.")
 
         norm_url = domain_url.strip().rstrip("/").lower()
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
         cursor = self.conn.cursor()
 
         # Check domain count quota
@@ -125,9 +130,12 @@ class MultiTenantRepository:
             (ctx.org_id, norm_url, now),
         )
         self.conn.commit()
-        return {"id": cursor.lastrowid, "org_id": ctx.org_id, "domain_url": norm_url}
+        row_id = cursor.lastrowid
+        if row_id is None:
+            raise RuntimeError("INSERT into tenant_domains did not produce a row id")
+        return {"id": row_id, "org_id": ctx.org_id, "domain_url": norm_url}
 
-    def list_domains(self, ctx: TenantContext) -> List[Dict[str, Any]]:
+    def list_domains(self, ctx: TenantContext) -> list[dict[str, Any]]:
         """List domains strictly scoped to ctx.org_id."""
         cursor = self.conn.cursor()
         cursor.execute(
@@ -136,7 +144,7 @@ class MultiTenantRepository:
         )
         return [dict(r) for r in cursor.fetchall()]
 
-    def get_domain(self, ctx: TenantContext, domain_id: int) -> Optional[Dict[str, Any]]:
+    def get_domain(self, ctx: TenantContext, domain_id: int) -> dict[str, Any] | None:
         """Get single domain verifying org_id ownership."""
         cursor = self.conn.cursor()
         cursor.execute(
@@ -152,7 +160,7 @@ class MultiTenantRepository:
         if not domain:
             raise PermissionError("Access denied: Target domain does not belong to this organization.")
 
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
         cursor = self.conn.cursor()
         cursor.execute(
             """
@@ -177,9 +185,11 @@ class MultiTenantRepository:
             (now, domain_id, ctx.org_id),
         )
         self.conn.commit()
+        if score_id is None:
+            raise RuntimeError("INSERT into tenant_scores did not produce a row id")
         return score_id
 
-    def list_scores(self, ctx: TenantContext, domain_id: int, limit: int = 20) -> List[Dict[str, Any]]:
+    def list_scores(self, ctx: TenantContext, domain_id: int, limit: int = 20) -> list[dict[str, Any]]:
         """List scores strictly scoped to ctx.org_id."""
         domain = self.get_domain(ctx, domain_id)
         if not domain:
@@ -198,7 +208,7 @@ class MultiTenantRepository:
         if not domain:
             raise PermissionError("Access denied: Domain does not belong to this organization.")
 
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
         cursor = self.conn.cursor()
         cursor.execute(
             """
@@ -218,4 +228,7 @@ class MultiTenantRepository:
             ),
         )
         self.conn.commit()
-        return cursor.lastrowid
+        row_id = cursor.lastrowid
+        if row_id is None:
+            raise RuntimeError("INSERT into tenant_probes did not produce a row id")
+        return row_id

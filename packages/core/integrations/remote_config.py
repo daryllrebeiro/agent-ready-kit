@@ -5,26 +5,26 @@ Spend safeguards) without requiring service redeployment.
 """
 
 import time
-from typing import Any, Dict, Optional
+from typing import Any
 
 
 class RemoteConfigManager:
     """Manages cloud-synchronized dynamic feature flags and kill switches."""
 
-    def __init__(self, initial_flags: Optional[Dict[str, Any]] = None):
-        self._flags: Dict[str, Any] = initial_flags or {
+    def __init__(self, initial_flags: dict[str, Any] | None = None):
+        self._flags: dict[str, Any] = initial_flags or {
             "edge_proxy_kill_switch": False,
             "github_pr_bot_kill_switch": False,
             "global_spend_circuit_breaker_override": False,
             "mcp_gateway_maintenance_mode": False,
         }
         self._last_synced: float = time.time()
-        self._audit_log = []
+        self._audit_log: list[dict[str, Any]] = []
 
     def get_flag(self, flag_name: str, default: Any = False) -> Any:
         return self._flags.get(flag_name, default)
 
-    def set_flag(self, flag_name: str, value: Any, actor: str = "admin@agentready.dev") -> Dict[str, Any]:
+    def set_flag(self, flag_name: str, value: Any, actor: str = "admin@agentready.dev") -> dict[str, Any]:
         """Dynamically updates a remote flag and records an audit log entry."""
         prev = self._flags.get(flag_name)
         self._flags[flag_name] = value

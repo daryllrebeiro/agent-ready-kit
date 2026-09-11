@@ -1,9 +1,10 @@
 """Autonomous AI agent persona simulations evaluating archetype-specific website readiness."""
 
-from typing import Any, Dict, List, Optional
+from typing import Any
+
 from bs4 import BeautifulSoup
+
 from packages.core.checks.structured_data import extract_json_ld
-from packages.core.schemas import Score
 from packages.core.scorer import Scorer
 
 
@@ -13,7 +14,7 @@ class AgentPersonaSimulator:
     def __init__(self):
         self.scorer = Scorer()
 
-    def simulate_all_personas(self, url: str, html: Optional[str] = None) -> Dict[str, Any]:
+    def simulate_all_personas(self, url: str, html: str | None = None) -> dict[str, Any]:
         """Evaluate site against all 4 specialized AI agent personas."""
         if not html:
             fetch_res = self.scorer.fetch_resource(url)
@@ -41,7 +42,7 @@ class AgentPersonaSimulator:
             },
         }
 
-    def _simulate_research_agent(self, soup: BeautifulSoup, json_ld: List[Dict[str, Any]]) -> Dict[str, Any]:
+    def _simulate_research_agent(self, soup: BeautifulSoup, json_ld: list[dict[str, Any]]) -> dict[str, Any]:
         """Research / Synthesis Agent: Factual depth, entity authority, tables, citations."""
         score = 0.0
         details = []
@@ -62,7 +63,11 @@ class AgentPersonaSimulator:
 
         # 3. Citation links & references
         links = soup.find_all("a", href=True)
-        external_links = [l for l in links if l["href"].startswith("http")]
+        external_links = []
+        for link in links:
+            href = link.get("href")
+            if isinstance(href, str) and href.startswith("http"):
+                external_links.append(link)
         if len(external_links) >= 3:
             score += 15.0
             details.append("[OK] External references and citations available")
@@ -75,7 +80,7 @@ class AgentPersonaSimulator:
             "key_strengths": details,
         }
 
-    def _simulate_commerce_agent(self, soup: BeautifulSoup, json_ld: List[Dict[str, Any]]) -> Dict[str, Any]:
+    def _simulate_commerce_agent(self, soup: BeautifulSoup, json_ld: list[dict[str, Any]]) -> dict[str, Any]:
         """Commerce / Shopping Agent: Product, price, currency, availability, reviews."""
         score = 0.0
         details = []
@@ -107,7 +112,7 @@ class AgentPersonaSimulator:
             "key_strengths": details,
         }
 
-    def _simulate_coding_agent(self, soup: BeautifulSoup, json_ld: List[Dict[str, Any]]) -> Dict[str, Any]:
+    def _simulate_coding_agent(self, soup: BeautifulSoup, json_ld: list[dict[str, Any]]) -> dict[str, Any]:
         """Coding & Technical Assistant: Code blocks, API schema, /llms.txt context."""
         score = 0.0
         details = []
@@ -135,7 +140,9 @@ class AgentPersonaSimulator:
             "key_strengths": details,
         }
 
-    def _simulate_local_discovery_agent(self, soup: BeautifulSoup, json_ld: List[Dict[str, Any]]) -> Dict[str, Any]:
+    def _simulate_local_discovery_agent(
+        self, soup: BeautifulSoup, json_ld: list[dict[str, Any]]
+    ) -> dict[str, Any]:
         """Local Discovery / Trip Agent: LocalBusiness, coordinates, address, opening hours."""
         score = 0.0
         details = []

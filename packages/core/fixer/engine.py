@@ -1,12 +1,9 @@
 """Automated remediation engine generating drop-in fixes for AI agent readiness."""
 
-import json
 import os
-from typing import Any, Dict, Optional
 from urllib.parse import urlparse
+
 from packages.core.generator import LLMsGenerator
-from packages.core.schemas import Score
-from packages.core.scorer import Scorer
 
 
 class FixerEngine:
@@ -14,14 +11,13 @@ class FixerEngine:
 
     def __init__(self):
         self.generator = LLMsGenerator()
-        self.scorer = Scorer()
 
     def generate_all_fixes(
         self,
         url: str,
-        site_name: Optional[str] = None,
-        site_description: Optional[str] = None,
-    ) -> Dict[str, str]:
+        site_name: str | None = None,
+        site_description: str | None = None,
+    ) -> dict[str, str]:
         """Generate full remediation bundle for a target URL."""
         parsed = urlparse(url if "://" in url else f"https://{url}")
         domain = parsed.netloc or parsed.path
@@ -63,7 +59,7 @@ class FixerEngine:
             "schema-ld.json": schema_json,
         }
 
-    def apply_fixes_to_directory(self, fixes: Dict[str, str], output_dir: str) -> Dict[str, str]:
+    def apply_fixes_to_directory(self, fixes: dict[str, str], output_dir: str) -> dict[str, str]:
         """Write generated fix files to disk."""
         os.makedirs(output_dir, exist_ok=True)
         written_paths = {}

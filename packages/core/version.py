@@ -16,3 +16,13 @@ DEFAULT_WEIGHTS = {
     "token_bloat": 0.20,
     "bot_permissions": 0.20,
 }
+
+# Experimental v0.2 recalibration table (drift.py only; NOT the live scorer).
+# Lives here so there is exactly one weights source in the codebase.
+ALGORITHM_VERSION_V0_2 = "score_v0.2"
+EXPERIMENTAL_WEIGHTS_V0_2: dict[str, float] = {
+    "llms_txt": 0.35,
+    "structured_data": 0.30,
+    "bot_permissions": 0.20,
+    "token_bloat": 0.15,
+}

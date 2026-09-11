@@ -1,7 +1,9 @@
 """Multilingual and internationalization (i18n) agent readiness evaluation."""
 
-from typing import Any, Dict, List
+from typing import Any
+
 from bs4 import BeautifulSoup
+
 from packages.core.checks.structured_data import extract_json_ld
 from packages.core.schemas import ComponentStatus, ScoreComponent
 
@@ -11,8 +13,8 @@ def check_multilingual(
     weight: float = 0.15,
 ) -> ScoreComponent:
     """Evaluate multi-language hreflang alternates, inLanguage Schema, and localized agent discovery."""
-    recommendations: List[str] = []
-    evidence: Dict[str, Any] = {
+    recommendations: list[str] = []
+    evidence: dict[str, Any] = {
         "html_lang": None,
         "hreflang_tags": [],
         "in_language_declarations": [],
@@ -44,7 +46,7 @@ def check_multilingual(
     has_x_default = False
     for link in soup.find_all("link", rel="alternate"):
         hl = link.get("hreflang")
-        if hl:
+        if isinstance(hl, str) and hl:
             hreflangs.append(hl.lower())
             if hl.lower() == "x-default":
                 has_x_default = True
@@ -71,7 +73,9 @@ def check_multilingual(
     if html_lang:
         score += 30.0
     else:
-        recommendations.append("Set `<html lang=\"...\">` with an IETF BCP 47 language code (e.g. `en`, `es`, `ja`).")
+        recommendations.append(
+            'Set `<html lang="...">` with an IETF BCP 47 language code (e.g. `en`, `es`, `ja`).'
+        )
 
     # Multi-language alternates (40 pts)
     if len(hreflangs) >= 2:
@@ -94,7 +98,9 @@ def check_multilingual(
         details = f"Excellent internationalization: HTML lang='{html_lang}', {len(hreflangs)} hreflang alternates declared."
     elif score >= 50.0:
         status = ComponentStatus.WARN
-        details = f"Basic language tag '{html_lang}' present, but missing structured multi-language alternates."
+        details = (
+            f"Basic language tag '{html_lang}' present, but missing structured multi-language alternates."
+        )
     else:
         status = ComponentStatus.FAIL
         details = "Missing language declarations. International AI agents cannot localize content accurately."

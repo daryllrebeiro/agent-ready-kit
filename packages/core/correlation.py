@@ -1,11 +1,12 @@
 """Correlation analysis engine to validate whether agent-readiness scores predict LLM citation behavior."""
 
 import math
-from typing import Any, Dict, List, Tuple
+from typing import Any
+
 from packages.core.schemas import Score
 
 
-def compute_pearson_correlation(x: List[float], y: List[float]) -> float:
+def compute_pearson_correlation(x: list[float], y: list[float]) -> float:
     """Compute Pearson correlation coefficient between two numeric series."""
     n = len(x)
     if n != len(y) or n < 2:
@@ -24,13 +25,13 @@ def compute_pearson_correlation(x: List[float], y: List[float]) -> float:
     return round(cov / denominator, 4)
 
 
-def compute_spearman_rank_correlation(x: List[float], y: List[float]) -> float:
+def compute_spearman_rank_correlation(x: list[float], y: list[float]) -> float:
     """Compute Spearman's rank correlation coefficient."""
     n = len(x)
     if n != len(y) or n < 2:
         return 0.0
 
-    def rankify(series: List[float]) -> List[float]:
+    def rankify(series: list[float]) -> list[float]:
         sorted_indices = sorted(range(n), key=lambda i: series[i])
         ranks = [0.0] * n
         for rank, idx in enumerate(sorted_indices, 1):
@@ -47,8 +48,8 @@ class CorrelationHarness:
 
     def analyze_dataset(
         self,
-        samples: List[Dict[str, Any]],
-    ) -> Dict[str, Any]:
+        samples: list[dict[str, Any]],
+    ) -> dict[str, Any]:
         """
         Analyze a list of sampled items.
         Each sample dict contains:
@@ -60,20 +61,27 @@ class CorrelationHarness:
         if not samples:
             return {"error": "empty_dataset", "samples_count": 0}
 
-        overall_scores: List[float] = []
-        llms_txt_scores: List[float] = []
-        structured_scores: List[float] = []
-        bloat_scores: List[float] = []
-        bot_scores: List[float] = []
-        citation_rates: List[float] = []
+        overall_scores: list[float] = []
+        llms_txt_scores: list[float] = []
+        structured_scores: list[float] = []
+        bloat_scores: list[float] = []
+        bot_scores: list[float] = []
+        citation_rates: list[float] = []
 
         for sample in samples:
             sc = sample["score"]
             overall = sc.overall_score if isinstance(sc, Score) else sc.get("overall_score", 0.0)
             overall_scores.append(overall)
 
-            components = sc.components if isinstance(sc, Score) else sc.get("components", [])
-            comp_map = {c.name: c.score for c in components} if isinstance(sc, Score) else {c["name"]: c["score"] for c in components}
+            if isinstance(sc, Score):
+                comp_map = {c.name: c.score for c in sc.components}
+            else:
+                raw_components = sc.get("components", [])
+                comp_map = {}
+                for c in raw_components:
+                    if not (isinstance(c, dict) and "name" in c and "score" in c):
+                        raise ValueError(f"malformed component entry: {c!r}")
+                    comp_map[c["name"]] = c["score"]
 
             llms_txt_scores.append(comp_map.get("llms_txt", 0.0))
             structured_scores.append(comp_map.get("structured_data", 0.0))
@@ -98,7 +106,9 @@ class CorrelationHarness:
         if pearson >= 0.70:
             finding = "STRONG POSITIVE CORRELATION: Higher agent readiness directly predicts higher citation frequency."
         elif pearson >= 0.40:
-            finding = "MODERATE CORRELATION: Agent readiness shows positive predictive signal for LLM citations."
+            finding = (
+                "MODERATE CORRELATION: Agent readiness shows positive predictive signal for LLM citations."
+            )
         elif pearson >= 0.10:
             finding = "WEAK CORRELATION: Signal detected, but requires weight recalibration."
         else:

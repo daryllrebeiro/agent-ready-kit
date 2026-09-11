@@ -12,6 +12,11 @@ from typing import Any
 
 from packages.core.schemas import ProbeResult, Score
 
+try:
+    from packages.core.storage.pg_connection import RealPgConnection
+except Exception:  # pragma: no cover - psycopg absent in minimal envs
+    RealPgConnection = None  # type: ignore[assignment,misc]
+
 POSTGRES_RLS_SCHEMA_DDL = """
 -- Organizations / Tenants Table
 CREATE TABLE IF NOT EXISTS organizations (
@@ -203,12 +208,17 @@ class PostgresRLSRepository:
 
     def __init__(self, connection: Any | None = None, dsn: str | None = None):
         self.dsn = dsn
+        # Both connection types expose set_session_tenant(); anything else
+        # falls into the raw set_config branch of tenant_context.
         self.conn = connection or MockPostgresConnection()
 
     @contextmanager
     def tenant_context(self, tenant_id: str):
         """Context manager setting PostgreSQL session variable app.tenant_id."""
-        if hasattr(self.conn, "set_session_tenant"):
+        session_types: tuple = (MockPostgresConnection,)
+        if RealPgConnection is not None:
+            session_types = (MockPostgresConnection, RealPgConnection)
+        if isinstance(self.conn, session_types):
             prev = self.conn.get_session_tenant()
             self.conn.set_session_tenant(tenant_id)
             try:
@@ -219,9 +229,11 @@ class PostgresRLSRepository:
                 else:
                     self.conn.set_session_tenant("")
         else:
-            # Live psycopg connection: parameterized set_config (SET does not
-            # allow bind params; f-string interpolation here was injectable).
-            cursor = self.conn.cursor()
+            # Foreign live connection without the session interface:
+            # parameterized set_config (SET does not allow bind params;
+            # f-string interpolation here was injectable).
+            raw_conn: Any = self.conn
+            cursor = raw_conn.cursor()
             cursor.execute("SELECT set_config('app.tenant_id', %s, true)", (tenant_id,))
             try:
                 yield self
@@ -352,6 +364,29 @@ class PostgresRLSRepository:
             )
             rows = cur.fetchall()
             return [dict(r) for r in rows]
+
+    def purge_stale_records(self, tenant_id: str, cutoff_iso: str) -> dict[str, int]:
+        """Delete scores/probe_runs older than cutoff_iso for one tenant.
+
+        Returns actual deleted row counts (no simulation). Note the schema
+        asymmetry: scores tracks scanned_at, probe_runs tracks created_at.
+        Timestamps are ISO-8601 strings, so lexicographic comparison is
+        chronological.
+        """
+        with self.tenant_context(tenant_id):
+            cur = self.conn.conn.cursor()
+            cur.execute(
+                "DELETE FROM scores WHERE tenant_id = ? AND scanned_at < ?",
+                (tenant_id, cutoff_iso),
+            )
+            scores = cur.rowcount
+            cur.execute(
+                "DELETE FROM probe_runs WHERE tenant_id = ? AND created_at < ?",
+                (tenant_id, cutoff_iso),
+            )
+            probes = cur.rowcount
+            self.conn.conn.commit()
+            return {"scores": scores, "probes": probes}
 
     def list_probes(self, tenant_id: str, domain_url: str) -> list[dict[str, Any]]:
         with self.tenant_context(tenant_id):

@@ -4,14 +4,13 @@ Calculates billable volume across tracked domains, probe frequency, and multilin
 Handles Stripe subscription lifecycle with idempotent event verification.
 """
 
-import hmac
 import hashlib
+import hmac
 import json
 import time
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any
 
-
-TIER_LIMITS = {
+TIER_LIMITS: dict[str, dict[str, Any]] = {
     "free": {
         "price_usd": 0,
         "max_domains": 5,
@@ -36,12 +35,12 @@ TIER_LIMITS = {
 class StripeBillingEngine:
     """Manages subscription state, usage calculation, and idempotent webhook processing."""
 
-    def __init__(self, webhook_secret: Optional[str] = None):
+    def __init__(self, webhook_secret: str | None = None):
         self.webhook_secret = webhook_secret or "whsec_test_secret"
         # Idempotency set tracking processed Stripe event IDs
-        self._processed_events: Set[str] = set()
+        self._processed_events: set[str] = set()
         # Tenant subscriptions store: tenant_id -> subscription dict
-        self._subscriptions: Dict[str, Dict[str, Any]] = {}
+        self._subscriptions: dict[str, dict[str, Any]] = {}
 
     def calculate_estimated_monthly_units(
         self,
@@ -49,10 +48,12 @@ class StripeBillingEngine:
         probes_per_domain_per_month: int = 30,
         languages_count: int = 1,
         include_personas: bool = True,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Calculates expected probe units and recommended subscription tier."""
         persona_multiplier = 4 if include_personas else 1
-        total_monthly_probes = domain_count * probes_per_domain_per_month * languages_count * persona_multiplier
+        total_monthly_probes = (
+            domain_count * probes_per_domain_per_month * languages_count * persona_multiplier
+        )
 
         recommended_tier = "free"
         if domain_count > 25 or total_monthly_probes > 2000:
@@ -90,7 +91,7 @@ class StripeBillingEngine:
         except Exception:
             return False
 
-    def handle_webhook_event(self, event_json: str, signature_header: Optional[str] = None) -> Tuple[bool, str]:
+    def handle_webhook_event(self, event_json: str, signature_header: str | None = None) -> tuple[bool, str]:
         """Processes a Stripe event idempotently."""
         try:
             event = json.loads(event_json)
@@ -142,5 +143,5 @@ class StripeBillingEngine:
         self._processed_events.add(event_id)
         return True, f"Processed {event_type} for tenant {tenant_id}"
 
-    def get_subscription(self, tenant_id: str) -> Optional[Dict[str, Any]]:
+    def get_subscription(self, tenant_id: str) -> dict[str, Any] | None:
         return self._subscriptions.get(tenant_id)

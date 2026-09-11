@@ -1,9 +1,10 @@
 """Check structured data (JSON-LD, OpenGraph, Microdata) on web pages."""
 
 import json
-import re
-from typing import Any, Dict, List, Optional
+from typing import Any
+
 from bs4 import BeautifulSoup
+
 from packages.core.schemas import ComponentStatus, ScoreComponent
 
 RECOGNIZED_HIGH_VALUE_SCHEMAS = {
@@ -24,9 +25,9 @@ RECOGNIZED_HIGH_VALUE_SCHEMAS = {
 }
 
 
-def extract_json_ld(soup: BeautifulSoup) -> List[Dict[str, Any]]:
+def extract_json_ld(soup: BeautifulSoup) -> list[dict[str, Any]]:
     """Extract and parse all JSON-LD blocks from HTML."""
-    json_ld_blocks: List[Dict[str, Any]] = []
+    json_ld_blocks: list[dict[str, Any]] = []
     scripts = soup.find_all("script", type=lambda t: t and "ld+json" in t.lower())
     for script in scripts:
         raw_text = script.string or script.get_text() or ""
@@ -48,13 +49,13 @@ def extract_json_ld(soup: BeautifulSoup) -> List[Dict[str, Any]]:
     return json_ld_blocks
 
 
-def extract_opengraph_and_meta(soup: BeautifulSoup) -> Dict[str, str]:
+def extract_opengraph_and_meta(soup: BeautifulSoup) -> dict[str, str]:
     """Extract OpenGraph and core meta tags."""
-    meta_tags: Dict[str, str] = {}
+    meta_tags: dict[str, str] = {}
     for meta in soup.find_all("meta"):
         prop = meta.get("property") or meta.get("name")
         content = meta.get("content")
-        if prop and content:
+        if isinstance(prop, str) and isinstance(content, str) and prop and content:
             meta_tags[prop.lower()] = content.strip()
     return meta_tags
 
@@ -64,8 +65,8 @@ def check_structured_data(
     weight: float = 0.30,
 ) -> ScoreComponent:
     """Evaluate structured data on the page."""
-    recommendations: List[str] = []
-    evidence: Dict[str, Any] = {
+    recommendations: list[str] = []
+    evidence: dict[str, Any] = {
         "json_ld_count": 0,
         "schema_types": [],
         "opengraph_tags": [],
@@ -95,7 +96,7 @@ def check_structured_data(
     evidence["has_meta_description"] = "description" in meta_tags or "og:description" in meta_tags
 
     # Entity types found in JSON-LD
-    schema_types: List[str] = []
+    schema_types: list[str] = []
     has_malformed_json = False
 
     for block in json_ld_blocks:
@@ -126,32 +127,40 @@ def check_structured_data(
         if high_value_matches:
             score += min(25.0, len(high_value_matches) * 12.5)
         else:
-            recommendations.append("Add standard Schema.org entity types (e.g. Organization, WebSite, SoftwareApplication, Product, or FAQPage).")
+            recommendations.append(
+                "Add standard Schema.org entity types (e.g. Organization, WebSite, SoftwareApplication, Product, or FAQPage)."
+            )
     else:
-        recommendations.append("Implement Schema.org JSON-LD structured data in a `<script type=\"application/ld+json\">` block.")
+        recommendations.append(
+            'Implement Schema.org JSON-LD structured data in a `<script type="application/ld+json">` block.'
+        )
 
     # 2. OpenGraph / Social Metadata (Max 25 pts)
     og_score = (len(og_found) / 5.0) * 25.0
     score += og_score
     if len(og_found) < 4:
-        recommendations.append("Include complete OpenGraph meta tags (`og:title`, `og:description`, `og:image`, `og:url`, `og:type`).")
+        recommendations.append(
+            "Include complete OpenGraph meta tags (`og:title`, `og:description`, `og:image`, `og:url`, `og:type`)."
+        )
 
     # 3. Canonical URL (Max 10 pts)
     if evidence["has_canonical"]:
         score += 10.0
     else:
-        recommendations.append("Add a `<link rel=\"canonical\" href=\"...\">` tag to prevent agent citation duplication.")
+        recommendations.append(
+            'Add a `<link rel="canonical" href="...">` tag to prevent agent citation duplication.'
+        )
 
     # 4. Meta Description (Max 15 pts)
     if evidence["has_meta_description"]:
         score += 15.0
     else:
-        recommendations.append("Provide a clear `<meta name=\"description\">` tag summarizing page purpose.")
+        recommendations.append('Provide a clear `<meta name="description">` tag summarizing page purpose.')
 
     # Penalties
     if has_malformed_json:
         score = max(0.0, score - 20.0)
-        recommendations.insert(0, "Fix malformed JSON in your `<script type=\"application/ld+json\">` block.")
+        recommendations.insert(0, 'Fix malformed JSON in your `<script type="application/ld+json">` block.')
 
     score = min(100.0, max(0.0, score))
 
@@ -163,7 +172,9 @@ def check_structured_data(
         details = f"Partial structured data present ({len(schema_types)} schema types, {len(og_found)}/5 OpenGraph tags)."
     else:
         status = ComponentStatus.FAIL
-        details = "Minimal or missing structured data. AI agents will struggle to extract entity relationships."
+        details = (
+            "Minimal or missing structured data. AI agents will struggle to extract entity relationships."
+        )
 
     return ScoreComponent(
         name="structured_data",
