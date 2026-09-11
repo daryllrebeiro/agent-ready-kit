@@ -1,5 +1,10 @@
 # AgentReady — Final Production Readiness Audit Report
 
+> **SUPERSEDED (2026-09-11): this report's 92.5% / GA verdict was produced
+> by a self-grading harness against mocked infrastructure and is not a
+> statement about the codebase. Preserved for history. Current truth:
+> `README.md`, `FEATURES.md`, `REVIEW_AND_ROADMAP.md`.**
+
 **Date:** August 24, 2026  
 **Auditor:** Automated Production Readiness Verification Harness  
 **Version:** 1.0.0-GA  

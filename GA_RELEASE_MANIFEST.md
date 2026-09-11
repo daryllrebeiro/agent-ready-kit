@@ -1,5 +1,9 @@
 # AgentReady — General Availability (GA) Release Manifest
 
+> **SUPERSEDED (2026-09-11): no GA release ever shipped. The platform
+> described below (hosted SaaS, edge CDN, billing) was aspirational.
+> Preserved for history. Current truth: `README.md`, `FEATURES.md`.**
+
 **Release Version:** `v1.0.0-GA`  
 **Release Date:** August 24, 2026  
 **Git Branch:** `main`  

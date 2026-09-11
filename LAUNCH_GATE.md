@@ -1,5 +1,9 @@
 # AgentReady — Production Launch Gate & Release Manifest
 
+> **SUPERSEDED (2026-09-11): the GA approval below was never backed by live
+> infrastructure. No launch occurred. Preserved for history. Current truth:
+> `README.md`, `FEATURES.md`, `REVIEW_AND_ROADMAP.md`.**
+
 **Release Version:** `v1.0.0-GA`  
 **Git Branch:** `main`  
 **Repository:** `daryllrebeiro/agent-ready-kit`  
