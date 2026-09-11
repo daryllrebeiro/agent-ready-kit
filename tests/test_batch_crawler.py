@@ -1,6 +1,7 @@
 """Unit tests for batch crawler and CSV export."""
 
 import os
+
 from packages.core.crawler.batch import BatchCrawler
 
 

@@ -2,13 +2,12 @@
 
 import time
 from enum import Enum
-from typing import Any, Callable, Dict, Optional
 
 
 class CircuitState(str, Enum):
-    CLOSED = "CLOSED"      # Normal healthy operation
-    OPEN = "OPEN"          # Provider failing, blocking traffic
-    HALF_OPEN = "HALF_OPEN"# Testing canary requests to recover
+    CLOSED = "CLOSED"  # Normal healthy operation
+    OPEN = "OPEN"  # Provider failing, blocking traffic
+    HALF_OPEN = "HALF_OPEN"  # Testing canary requests to recover
 
 
 class CircuitBreaker:

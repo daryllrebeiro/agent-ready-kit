@@ -4,6 +4,7 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
+
 from packages.core.schemas import ComponentStatus, Score
 
 
@@ -47,7 +48,9 @@ def print_rich_score(score: Score, console: Console | None = None) -> None:
     header_text.append(f"({score.version})\n\n", style="dim")
     header_text.append(f"{score.summary}", style="italic white")
 
-    console.print(Panel(header_text, title="[bold cyan]AgentReady[/bold cyan]", border_style="cyan", padding=(1, 2)))
+    console.print(
+        Panel(header_text, title="[bold cyan]AgentReady[/bold cyan]", border_style="cyan", padding=(1, 2))
+    )
 
     # Component Table
     table = Table(title="Readiness Signal Breakdown", show_header=True, header_style="bold cyan", expand=True)
@@ -82,7 +85,9 @@ def print_rich_score(score: Score, console: Console | None = None) -> None:
         if comp.name == "bot_permissions" and "bot_status" in comp.evidence:
             bots = comp.evidence["bot_status"]
             if bots:
-                bot_table = Table(title="AI Crawler Permissions (robots.txt)", show_header=True, header_style="bold blue")
+                bot_table = Table(
+                    title="AI Crawler Permissions (robots.txt)", show_header=True, header_style="bold blue"
+                )
                 bot_table.add_column("Crawler Bot", style="bold")
                 bot_table.add_column("Status", justify="center")
                 bot_table.add_column("Matched Rule")
@@ -105,5 +110,11 @@ def print_rich_score(score: Score, console: Console | None = None) -> None:
             rec_text.append(f"{idx}. ", style="bold cyan")
             rec_text.append(f"{rec}\n", style="white")
 
-        console.print(Panel(rec_text, title="[bold yellow]Actionable Remediation Plan[/bold yellow]", border_style="yellow", padding=(1, 2)))
-
+        console.print(
+            Panel(
+                rec_text,
+                title="[bold yellow]Actionable Remediation Plan[/bold yellow]",
+                border_style="yellow",
+                padding=(1, 2),
+            )
+        )

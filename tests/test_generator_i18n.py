@@ -1,6 +1,7 @@
 """Unit tests for multilingual /llms.txt generator."""
 
 import tempfile
+
 from packages.core.generator_i18n import MultilingualLLMsGenerator
 
 

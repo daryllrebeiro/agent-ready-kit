@@ -5,17 +5,13 @@ and (c) when Redis is killed mid-test, the application fails open (allows
 through with degraded-mode counter incremented) rather than hard-crashing.
 """
 
-import pytest
 import subprocess
 import time
-import threading
-import json
-from http.client import HTTPConnection
 
-import apps.web.server as web_server
-from apps.web.server import DashboardAPIHandler
-from packages.core.probes.redis_connection import connect_real
+import pytest
+
 from packages.core.probes.redis_cache import DistributedProbeCache
+from packages.core.probes.redis_connection import connect_real
 
 
 @pytest.mark.integration
@@ -39,6 +35,7 @@ def test_real_redis_wired_for_budget_and_cache():
 
     # Dedup cache round-trip via real Redis
     from packages.core.schemas import ProbeResult
+
     pr = ProbeResult(provider="redis_proof", prompt="p", raw_response="r")
     cache.store_cached_probe("tenant_redis_proof", "redis_proof", "p", pr)
     got = cache.get_cached_probe("tenant_redis_proof", "redis_proof", "p")
@@ -82,6 +79,7 @@ def test_redis_kill_mid_test_fails_open():
 
     # 4. Cache get/store also fail-open
     from packages.core.schemas import ProbeResult
+
     pr = ProbeResult(provider="kill_test", prompt="p", raw_response="r")
     got = cache.get_cached_probe("tenant_kill_test", "kill_test", "p")
     assert got is None

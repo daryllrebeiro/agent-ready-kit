@@ -1,6 +1,7 @@
 """Unit tests for scorer orchestration and rank ordering."""
 
 import os
+
 from packages.core.scorer import Scorer
 
 FIXTURES_DIR = os.path.join(os.path.dirname(__file__), "..", "fixtures")

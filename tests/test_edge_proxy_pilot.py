@@ -1,8 +1,7 @@
 """Tests for edge proxy live pilot monitoring and synthetic witness measurements."""
 
-import pytest
-from packages.edge_proxy.simulator import EdgeProxySimulator
 from packages.edge_proxy.pilot import EdgePilotMonitor
+from packages.edge_proxy.simulator import EdgeProxySimulator
 
 
 def test_edge_pilot_monitor_synthetic_latency_distribution():
@@ -34,7 +33,9 @@ def test_edge_pilot_monitor_planned_kill_switch_reversion():
 
     origin = lambda u, h: {"status": 404, "body": "404 Not Found", "headers": {}}
     # Initial request with GPTBot for /llms.txt should be intercepted and served by proxy
-    initial_res = proxy.handle_request("https://pilot-customer.com/llms.txt", {"User-Agent": "GPTBot/1.0"}, origin_fetch=origin)
+    initial_res = proxy.handle_request(
+        "https://pilot-customer.com/llms.txt", {"User-Agent": "GPTBot/1.0"}, origin_fetch=origin
+    )
     assert initial_res["headers"].get("X-Served-By") == "AgentReady-Edge-Proxy"
 
     # Exercise planned kill switch

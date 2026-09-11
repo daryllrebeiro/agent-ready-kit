@@ -1,10 +1,9 @@
 """Phase 15 GA Rollout & Hypercare Daemon Tests."""
 
-import pytest
+from packages.core.observability.apm import APMMetricsBridge
+from packages.core.pipeline.dlq import DeadLetterQueue
 from packages.core.rollout.graduated_rollout import GraduatedRolloutController, RolloutStage
 from packages.core.rollout.hypercare import HypercareDaemon
-from packages.core.pipeline.dlq import DeadLetterQueue
-from packages.core.observability.apm import APMMetricsBridge
 
 
 def test_graduated_rollout_stage_progression_and_canary_gating():

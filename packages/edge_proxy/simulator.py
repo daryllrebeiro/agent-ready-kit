@@ -2,7 +2,8 @@
 
 import re
 import time
-from typing import Any, Callable, Dict, List, Optional
+from collections.abc import Callable
+from typing import Any
 
 AI_BOT_PATTERN = re.compile(
     r"(GPTBot|ClaudeBot|PerplexityBot|Claude-Web|ChatGPT-User|Google-Extended|Applebot-Extended|Amazonbot|cohere-ai|CCBot)",
@@ -15,7 +16,7 @@ class EdgeBotRateLimiter:
 
     def __init__(self, max_bot_requests_per_minute: int = 120):
         self.max_rpm = max_bot_requests_per_minute
-        self._history: Dict[str, List[float]] = {}
+        self._history: dict[str, list[float]] = {}
 
     def is_rate_limited(self, bot_id: str) -> bool:
         now = time.time()
@@ -35,21 +36,21 @@ class EdgeProxySimulator:
         self,
         shadow_mode: bool = True,
         kill_switch: bool = False,
-        fallback_llms_txt: Optional[str] = None,
-        bot_rate_limiter: Optional[EdgeBotRateLimiter] = None,
+        fallback_llms_txt: str | None = None,
+        bot_rate_limiter: EdgeBotRateLimiter | None = None,
     ):
         self.shadow_mode = shadow_mode
         self.kill_switch = kill_switch
         self.fallback_llms_txt = fallback_llms_txt
         self.rate_limiter = bot_rate_limiter or EdgeBotRateLimiter()
-        self.shadow_logs: List[Dict[str, Any]] = []
+        self.shadow_logs: list[dict[str, Any]] = []
 
     def handle_request(
         self,
         url: str,
-        headers: Dict[str, str],
-        origin_fetch: Callable[[str, Dict[str, str]], Dict[str, Any]],
-    ) -> Dict[str, Any]:
+        headers: dict[str, str],
+        origin_fetch: Callable[[str, dict[str, str]], dict[str, Any]],
+    ) -> dict[str, Any]:
         """
         Processes incoming request with strict FAIL-OPEN envelope.
         origin_fetch is a callable returning {"status": 200, "body": "...", "headers": {...}}
@@ -68,9 +69,9 @@ class EdgeProxySimulator:
     def _internal_route(
         self,
         url: str,
-        headers: Dict[str, str],
-        origin_fetch: Callable[[str, Dict[str, str]], Dict[str, Any]],
-    ) -> Dict[str, Any]:
+        headers: dict[str, str],
+        origin_fetch: Callable[[str, dict[str, str]], dict[str, Any]],
+    ) -> dict[str, Any]:
         user_agent = headers.get("User-Agent", "")
         accept = headers.get("Accept", "")
         is_bypass = headers.get("X-AgentReady-Bypass") == "true" or self.kill_switch
@@ -96,12 +97,14 @@ class EdgeProxySimulator:
 
         # 3. Shadow Mode
         if self.shadow_mode:
-            self.shadow_logs.append({
-                "url": url,
-                "user_agent": user_agent,
-                "is_ai_bot": is_ai_bot,
-                "requests_markdown": requests_markdown,
-            })
+            self.shadow_logs.append(
+                {
+                    "url": url,
+                    "user_agent": user_agent,
+                    "is_ai_bot": is_ai_bot,
+                    "requests_markdown": requests_markdown,
+                }
+            )
             resp = origin_fetch(url, headers)
             resp["headers"]["X-AgentReady-Shadow"] = "true"
             return resp

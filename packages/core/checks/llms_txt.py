@@ -1,19 +1,20 @@
 """Check for /llms.txt and /llms-full.txt standard compliance."""
 
 import re
-from typing import Any, Dict, List, Optional
+from typing import Any
+
 from packages.core.schemas import ComponentStatus, ScoreComponent
 
 
-def parse_llms_txt_content(content: str) -> Dict[str, Any]:
+def parse_llms_txt_content(content: str) -> dict[str, Any]:
     """Parse and validate llms.txt markdown content against spec."""
     lines = content.strip().splitlines()
     has_h1 = False
     h1_title = ""
     has_blockquote = False
     blockquote_text = ""
-    sections: List[str] = []
-    links: List[Dict[str, str]] = []
+    sections: list[str] = []
+    links: list[dict[str, str]] = []
 
     # Markdown link pattern: - [Title](url): optional summary
     link_pattern = re.compile(r"^\s*-\s*\[([^\]]+)\]\(([^)]+)\)(?:\s*:\s*(.*))?")
@@ -31,11 +32,13 @@ def parse_llms_txt_content(content: str) -> Dict[str, Any]:
         else:
             match = link_pattern.match(stripped)
             if match:
-                links.append({
-                    "title": match.group(1).strip(),
-                    "url": match.group(2).strip(),
-                    "description": (match.group(3) or "").strip(),
-                })
+                links.append(
+                    {
+                        "title": match.group(1).strip(),
+                        "url": match.group(2).strip(),
+                        "description": (match.group(3) or "").strip(),
+                    }
+                )
 
     return {
         "has_h1": has_h1,
@@ -49,20 +52,20 @@ def parse_llms_txt_content(content: str) -> Dict[str, Any]:
 
 
 def check_llms_txt(
-    content: Optional[str] = None,
-    full_content: Optional[str] = None,
+    content: str | None = None,
+    full_content: str | None = None,
     exists: bool = False,
     full_exists: bool = False,
-    status_code: Optional[int] = None,
+    status_code: int | None = None,
     weight: float = 0.30,
 ) -> ScoreComponent:
     """Evaluate /llms.txt compliance."""
-    evidence: Dict[str, Any] = {
+    evidence: dict[str, Any] = {
         "exists": exists or bool(content),
         "full_exists": full_exists or bool(full_content),
         "status_code": status_code,
     }
-    recommendations: List[str] = []
+    recommendations: list[str] = []
 
     if not evidence["exists"] or not content or not content.strip():
         return ScoreComponent(
@@ -93,17 +96,23 @@ def check_llms_txt(
     if parsed["has_blockquote"] and parsed["blockquote_summary"]:
         score += 15.0
     else:
-        recommendations.append("Add a blockquote summary directly below the H1 (e.g. `> Concise summary of what this site does`).")
+        recommendations.append(
+            "Add a blockquote summary directly below the H1 (e.g. `> Concise summary of what this site does`)."
+        )
 
     if parsed["link_count"] > 0:
         score += min(20.0, parsed["link_count"] * 5.0)
     else:
-        recommendations.append("Add curated markdown links formatted as `- [Title](url): description` under section headings.")
+        recommendations.append(
+            "Add curated markdown links formatted as `- [Title](url): description` under section headings."
+        )
 
     if evidence["full_exists"]:
         score += 10.0
     else:
-        recommendations.append("Provide a comprehensive `/llms-full.txt` file or link for full-context ingestion.")
+        recommendations.append(
+            "Provide a comprehensive `/llms-full.txt` file or link for full-context ingestion."
+        )
 
     score = min(100.0, score)
 
@@ -115,7 +124,9 @@ def check_llms_txt(
         details = f"/llms.txt found but missing key spec formatting ({len(recommendations)} improvements recommended)."
     else:
         status = ComponentStatus.FAIL
-        details = "/llms.txt is present but severely incomplete or non-compliant with standard specifications."
+        details = (
+            "/llms.txt is present but severely incomplete or non-compliant with standard specifications."
+        )
 
     return ScoreComponent(
         name="llms_txt",

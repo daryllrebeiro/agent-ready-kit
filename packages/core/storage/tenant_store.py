@@ -11,13 +11,13 @@ that set the variable; local dev is unaffected.
 """
 
 import os
-from typing import Any, Optional
+from typing import Any
 
 from packages.core.schemas import ProbeResult, Score
 from packages.core.storage.repository import StorageRepository
 
 _PG_REPO = None
-_PG_ERROR: Optional[str] = None
+_PG_ERROR: str | None = None
 
 
 def storage_mode() -> str:
@@ -39,7 +39,7 @@ def get_pg_repo():  # lazy singleton; None when unreachable
         return None
 
 
-def pg_unavailable_reason() -> Optional[str]:
+def pg_unavailable_reason() -> str | None:
     get_pg_repo()
     return _PG_ERROR
 
@@ -63,15 +63,13 @@ class TenantStore:
             return pg.list_domains(self.tenant_id)
         return self._sqlite.list_domains()
 
-    def get_latest_score(self, domain_url: str) -> Optional[Score]:
+    def get_latest_score(self, domain_url: str) -> Score | None:
         pg = self._pg()
         if pg is not None:
             return pg.get_latest_score(self.tenant_id, domain_url)
         return self._sqlite.get_latest_score(domain_url)
 
-    def get_probe_history(
-        self, domain_url: Optional[str] = None, limit: int = 50
-    ) -> list[dict[str, Any]]:
+    def get_probe_history(self, domain_url: str | None = None, limit: int = 50) -> list[dict[str, Any]]:
         pg = self._pg()
         if pg is not None:
             if domain_url:

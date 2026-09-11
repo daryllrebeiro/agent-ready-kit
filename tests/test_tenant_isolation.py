@@ -1,11 +1,12 @@
 """Release-blocking test suite verifying multi-tenant isolation and security boundaries."""
 
 import sqlite3
+
 import pytest
 
 from packages.core.auth.context import TenantContext, UserRole
-from packages.core.auth.keys import generate_api_key, hash_api_key, verify_api_key
-from packages.core.schemas import ComponentStatus, Score, ScoreComponent
+from packages.core.auth.keys import generate_api_key, verify_api_key
+from packages.core.schemas import Score
 from packages.core.storage.tenant_repository import MultiTenantRepository
 
 

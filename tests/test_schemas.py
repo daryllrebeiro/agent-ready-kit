@@ -1,6 +1,7 @@
 """Unit tests for Pydantic data contract schemas in packages/core/schemas.py."""
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
+
 import pytest
 from pydantic import ValidationError
 
@@ -57,7 +58,7 @@ def test_score_roundtrip_serialization():
     score = Score(
         url="https://example.com",
         version="score_v0.1",
-        timestamp=datetime.now(timezone.utc),
+        timestamp=datetime.now(UTC),
         overall_score=85.0,
         grade="A",
         components=[comp],

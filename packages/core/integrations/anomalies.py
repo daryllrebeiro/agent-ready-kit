@@ -1,6 +1,7 @@
 """Proactive citation anomaly detection and root cause diagnosis."""
 
-from typing import Any, Dict, List, Optional
+from typing import Any
+
 from packages.core.schemas import Score
 
 
@@ -15,8 +16,8 @@ class CitationAnomalyDetector:
         domain: str,
         current_rate_pct: float,
         baseline_rate_pct: float,
-        latest_score: Optional[Score] = None,
-    ) -> Optional[Dict[str, Any]]:
+        latest_score: Score | None = None,
+    ) -> dict[str, Any] | None:
         """Detect citation drop exceeding threshold and diagnose root causes."""
         if baseline_rate_pct <= 0.0:
             return None
@@ -26,15 +27,19 @@ class CitationAnomalyDetector:
             return None
 
         # Root Cause Diagnosis
-        diagnoses: List[str] = []
+        diagnoses: list[str] = []
         if latest_score:
             for comp in latest_score.components:
                 if comp.name == "bot_permissions" and comp.score < 50.0:
-                    diagnoses.append("CRITICAL: AI search crawlers (GPTBot/ClaudeBot/PerplexityBot) blocked in robots.txt")
+                    diagnoses.append(
+                        "CRITICAL: AI search crawlers (GPTBot/ClaudeBot/PerplexityBot) blocked in robots.txt"
+                    )
                 if comp.name == "structured_data" and comp.score < 40.0:
                     diagnoses.append("HIGH: Missing or malformed Schema.org JSON-LD structured entities")
                 if comp.name == "token_bloat" and comp.score < 50.0:
-                    diagnoses.append("MEDIUM: Content token bloat or SPA client-side rendering obscuring raw text")
+                    diagnoses.append(
+                        "MEDIUM: Content token bloat or SPA client-side rendering obscuring raw text"
+                    )
                 if comp.name == "llms_txt" and comp.score < 50.0:
                     diagnoses.append("MEDIUM: Missing /llms.txt markdown context directory")
 
@@ -55,7 +60,7 @@ class CitationAnomalyDetector:
             ],
         }
 
-    def format_slack_anomaly_alert(self, anomaly: Dict[str, Any]) -> Dict[str, Any]:
+    def format_slack_anomaly_alert(self, anomaly: dict[str, Any]) -> dict[str, Any]:
         """Format Slack block payload for citation anomaly incident."""
         domain = anomaly["domain"]
         drop = anomaly["drop_percentage_points"]

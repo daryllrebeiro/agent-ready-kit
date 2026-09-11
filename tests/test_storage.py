@@ -1,9 +1,9 @@
 """Unit tests for SQLite storage layer and repository."""
 
-import os
 import pytest
+
 from packages.core.schemas import ComponentStatus, ProbeResult, Score, ScoreComponent
-from packages.core.storage.db import get_connection, init_db
+from packages.core.storage.db import init_db
 from packages.core.storage.repository import StorageRepository
 
 

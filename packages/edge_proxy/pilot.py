@@ -6,17 +6,18 @@ measurements (p50/p95/p99), fail-open trigger audits, and runtime kill-switch ex
 
 import math
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any
+
 from packages.edge_proxy.simulator import EdgeProxySimulator
 
 
 class EdgePilotMonitor:
     """Monitors live edge proxy pilot rollout with independent synthetic verification."""
 
-    def __init__(self, proxy_simulator: Optional[EdgeProxySimulator] = None):
+    def __init__(self, proxy_simulator: EdgeProxySimulator | None = None):
         self.proxy = proxy_simulator or EdgeProxySimulator(shadow_mode=False)
-        self.synthetic_probes: List[Dict[str, Any]] = []
-        self.fail_open_events: List[Dict[str, Any]] = []
+        self.synthetic_probes: list[dict[str, Any]] = []
+        self.fail_open_events: list[dict[str, Any]] = []
 
     def record_probe(
         self,
@@ -27,7 +28,7 @@ class EdgePilotMonitor:
         status_code: int,
         intercepted: bool,
         fail_open_triggered: bool = False,
-        fail_open_reason: Optional[str] = None,
+        fail_open_reason: str | None = None,
     ):
         """Records an external synthetic witness probe measurement."""
         added_latency_ms = max(0.0, proxy_latency_ms - origin_latency_ms)
@@ -47,7 +48,7 @@ class EdgePilotMonitor:
         if fail_open_triggered:
             self.fail_open_events.append(record)
 
-    def calculate_percentiles(self) -> Dict[str, float]:
+    def calculate_percentiles(self) -> dict[str, float]:
         """Calculates p50, p95, and p99 added latency percentiles across recorded probes."""
         if not self.synthetic_probes:
             return {"p50": 0.0, "p95": 0.0, "p99": 0.0, "total_probes": 0}
@@ -73,16 +74,18 @@ class EdgePilotMonitor:
             "fail_open_count": len(self.fail_open_events),
         }
 
-    def exercise_planned_kill_switch(self, target_domain: str) -> Dict[str, Any]:
+    def exercise_planned_kill_switch(self, target_domain: str) -> dict[str, Any]:
         """Exercises planned runtime kill switch and asserts immediate fallback to origin."""
         start_t = time.time()
         # Activate kill switch
         self.proxy.kill_switch = True
-        
+
         origin_fetch = lambda u, h: {"status": 200, "body": "Origin Content", "headers": {}}
         # Test routing request with AI bot User-Agent
         req_headers = {"User-Agent": "GPTBot/1.0"}
-        res = self.proxy.handle_request(f"https://{target_domain}/docs", req_headers, origin_fetch=origin_fetch)
+        res = self.proxy.handle_request(
+            f"https://{target_domain}/docs", req_headers, origin_fetch=origin_fetch
+        )
         elapsed_ms = (time.time() - start_t) * 1000.0
 
         return {

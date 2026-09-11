@@ -113,7 +113,11 @@ def test_e2e_production_launch_matrix():
             "Accept": "text/markdown",
             "CF-Connecting-IP": "10.0.0.1",
         }
-        edge_resp = edge_proxy.handle_request("https://example.com/llms.txt", edge_headers, lambda u, h: {"status": 404, "body": "", "headers": {}})
+        edge_resp = edge_proxy.handle_request(
+            "https://example.com/llms.txt",
+            edge_headers,
+            lambda u, h: {"status": 404, "body": "", "headers": {}},
+        )
         assert edge_resp["status"] == 200
         assert "AgentReady-Edge-Proxy" in edge_resp["headers"]["X-Served-By"]
 

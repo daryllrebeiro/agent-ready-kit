@@ -6,7 +6,6 @@ Performs data migration, schema verification, and checksum validation across ten
 import hashlib
 import json
 import sqlite3
-from typing import Any, Dict, Tuple
 
 from packages.core.schemas import Score
 from packages.core.storage.postgres_rls import PostgresRLSRepository
@@ -37,7 +36,7 @@ class SQLiteToPostgresMigrator:
         self.sqlite_path = sqlite_path
         self.target_repo = target_repo
 
-    def migrate(self, default_tenant_id: str = "org_default") -> Tuple[Dict[str, int], bool]:
+    def migrate(self, default_tenant_id: str = "org_default") -> tuple[dict[str, int], bool]:
         """Runs migration and returns (stats_dict, is_reconciled)."""
         sqlite_conn = sqlite3.connect(self.sqlite_path)
         sqlite_conn.row_factory = sqlite3.Row
@@ -51,7 +50,9 @@ class SQLiteToPostgresMigrator:
 
         # 1. Ensure default organization exists
         try:
-            self.target_repo.create_organization(default_tenant_id, "Default Migrated Organization", "enterprise")
+            self.target_repo.create_organization(
+                default_tenant_id, "Default Migrated Organization", "enterprise"
+            )
         except Exception:
             pass
 
@@ -138,9 +139,13 @@ class SQLiteToPostgresMigrator:
                             comps = json.loads(s_dict["components_json"])
                             recs = json.loads(s_dict["recommendations_json"])
                             score = Score(
-                                url=s_dict["url"], version=s_dict["version"],
-                                overall_score=s_dict["overall_score"], grade=s_dict["grade"],
-                                components=comps, summary=s_dict["summary"], recommendations=recs,
+                                url=s_dict["url"],
+                                version=s_dict["version"],
+                                overall_score=s_dict["overall_score"],
+                                grade=s_dict["grade"],
+                                components=comps,
+                                summary=s_dict["summary"],
+                                recommendations=recs,
                             )
                         elif "raw_json" in s_dict:
                             score = Score(**json.loads(s_dict["raw_json"]))
@@ -153,7 +158,10 @@ class SQLiteToPostgresMigrator:
                 tgt_lines = []
                 cur2 = self.target_repo.conn.conn.cursor()
                 cur2.execute("SELECT set_config('app.tenant_id', %s, true)", (default_tenant_id,))
-                cur2.execute("SELECT domain_url, raw_json FROM scores WHERE tenant_id = %s ORDER BY domain_url", (default_tenant_id,))
+                cur2.execute(
+                    "SELECT domain_url, raw_json FROM scores WHERE tenant_id = %s ORDER BY domain_url",
+                    (default_tenant_id,),
+                )
                 for r in cur2.fetchall():
                     raw = r["raw_json"]
                     data = raw if isinstance(raw, dict) else json.loads(raw)
@@ -161,8 +169,10 @@ class SQLiteToPostgresMigrator:
                 cur2.execute("SELECT set_config('app.tenant_id', '', true)")
                 tgt_checksum = hashlib.sha256("\n".join(tgt_lines).encode()).hexdigest()
 
-                checksum_match = (src_checksum == tgt_checksum)
-                print(f"MIGRATION CHECKSUMS: src={src_checksum[:16]}... tgt={tgt_checksum[:16]}... match={checksum_match}")
+                checksum_match = src_checksum == tgt_checksum
+                print(
+                    f"MIGRATION CHECKSUMS: src={src_checksum[:16]}... tgt={tgt_checksum[:16]}... match={checksum_match}"
+                )
             except Exception as e:
                 print(f"[WARN] Checksum reconciliation failed: {e}")
                 checksum_match = False

@@ -1,9 +1,9 @@
 """High-concurrency synthetic load testing harness for multi-tenant platform and edge proxy."""
 
+import sqlite3
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Any, Dict, List
-import sqlite3
+from typing import Any
 
 from packages.core.auth.context import TenantContext, UserRole
 from packages.core.schemas import Score
@@ -17,24 +17,26 @@ class LoadTestHarness:
         self.tenant_count = tenant_count
         self.operations_per_tenant = operations_per_tenant
 
-    def run_multi_tenant_benchmark(self) -> Dict[str, Any]:
+    def run_multi_tenant_benchmark(self) -> dict[str, Any]:
         """Execute concurrent multi-tenant read/write operations against repository."""
         # Use shared in-memory SQLite with WAL
         conn = sqlite3.connect(":memory:", check_same_thread=False)
         repo = MultiTenantRepository(conn)
 
         # 1. Provision synthetic tenants
-        contexts: List[TenantContext] = []
+        contexts: list[TenantContext] = []
         for i in range(self.tenant_count):
             org_id = f"org_bench_{i}"
             repo.create_organization(org_id, f"Synthetic Corp {i}", tier="growth", monthly_quota=5000)
-            ctx = TenantContext(org_id=org_id, user_id=f"user_{i}", role=UserRole.ADMIN, monthly_probe_quota=5000)
+            ctx = TenantContext(
+                org_id=org_id, user_id=f"user_{i}", role=UserRole.ADMIN, monthly_probe_quota=5000
+            )
             contexts.append(ctx)
             # Add domains
             repo.add_domain(ctx, f"https://tenant{i}-prod.example.com")
 
         start_time = time.time()
-        latencies: List[float] = []
+        latencies: list[float] = []
         errors = 0
         total_ops = self.tenant_count * self.operations_per_tenant
 
@@ -49,9 +51,10 @@ class LoadTestHarness:
         )
 
         import threading
+
         db_lock = threading.Lock()
 
-        def worker_task(ctx: TenantContext) -> List[float]:
+        def worker_task(ctx: TenantContext) -> list[float]:
             task_latencies = []
             nonlocal errors
             for _ in range(self.operations_per_tenant):

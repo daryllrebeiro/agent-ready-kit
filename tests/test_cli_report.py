@@ -12,7 +12,7 @@ def test_cli_report_command_not_in_v1_surface():
     """The `report` command is deferred to Phase 17+ and not in v1 CLI."""
     # The v1 parser only accepts: scan, probe, generate, dashboard, auth
     # Passing 'report' should cause argparse to exit with error code 2
-    import sys
+
     try:
         cli_entrypoint(["report", "https://example.com"])
         assert False, "report command should not be accepted in v1"

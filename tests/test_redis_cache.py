@@ -1,6 +1,7 @@
 """Unit tests for Distributed Redis Probe Cache and Rate Counter."""
 
 import time
+
 from packages.core.probes.redis_cache import DistributedProbeCache, MockRedisClient
 from packages.core.schemas import ProbeResult
 

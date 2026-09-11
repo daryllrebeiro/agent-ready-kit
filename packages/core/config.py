@@ -1,12 +1,20 @@
 """Configuration and weights for Agent-Ready scoring algorithm."""
 
-from typing import Dict, List
-
 # Single source of truth lives in packages.core.version (Sprint 0.5).
+# Re-exported here (with __all__) because scorer, CLI, and checks import
+# the weights/version from this module; do not let linters remove this.
 from packages.core.version import ALGORITHM_VERSION, DEFAULT_WEIGHTS
 
+__all__ = [
+    "ALGORITHM_VERSION",
+    "DEFAULT_WEIGHTS",
+    "GRADE_THRESHOLDS",
+    "TARGET_AI_BOTS",
+    "get_grade",
+]
+
 # Major AI crawlers and scrapers evaluated in robots.txt
-TARGET_AI_BOTS: List[Dict[str, str]] = [
+TARGET_AI_BOTS: list[dict[str, str]] = [
     {
         "name": "GPTBot",
         "owner": "OpenAI",

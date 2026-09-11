@@ -1,7 +1,7 @@
 """Unit tests for Slack, Discord, and HMAC signed webhooks."""
 
 from packages.core.integrations.notifications import NotificationDispatcher
-from packages.core.integrations.webhooks import WebhookDispatcher, compute_webhook_signature
+from packages.core.integrations.webhooks import compute_webhook_signature
 from packages.core.schemas import Score
 
 

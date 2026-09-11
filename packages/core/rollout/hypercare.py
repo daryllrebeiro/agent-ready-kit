@@ -8,7 +8,8 @@ Performs automated daily health reviews across:
 """
 
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any
+
 from packages.core.billing.margins import GrossMarginGuardrail
 from packages.core.observability.apm import APMMetricsBridge
 from packages.core.pipeline.dlq import DeadLetterQueue
@@ -19,13 +20,13 @@ class HypercareDaemon:
 
     def __init__(
         self,
-        dlq: Optional[DeadLetterQueue] = None,
-        apm_bridge: Optional[APMMetricsBridge] = None,
+        dlq: DeadLetterQueue | None = None,
+        apm_bridge: APMMetricsBridge | None = None,
     ):
         self.dlq = dlq or DeadLetterQueue()
         self.apm = apm_bridge or APMMetricsBridge()
 
-    def generate_daily_hypercare_report(self, day_number: int = 1) -> Dict[str, Any]:
+    def generate_daily_hypercare_report(self, day_number: int = 1) -> dict[str, Any]:
         """Runs daily audit inspection and evaluates if the system remains in healthy operational status."""
         metrics = self.apm.calculate_current_metrics()
         dlq_pending = len(self.dlq)

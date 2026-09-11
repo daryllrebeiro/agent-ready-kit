@@ -1,9 +1,8 @@
 """Phase 13 Chaos Game Day & 10x Scale Proof Tests."""
 
 import concurrent.futures
-import time
-import pytest
-from packages.core.observability.apm import APMMetricsBridge, DEFAULT_PRODUCTION_SLOS, SLOAlertEngine
+
+from packages.core.observability.apm import APMMetricsBridge, SLOAlertEngine
 from packages.core.pipeline.dlq import DeadLetterQueue
 from packages.core.probes.redis_cache import DistributedProbeCache, MockRedisClient
 from packages.core.schemas import ProbeResult
@@ -13,13 +12,11 @@ def test_10x_burst_scale_concurrent_tenant_probes():
     """Simulates 10x baseline workload (500 concurrent probe tasks across 50 tenants) with zero data loss."""
     redis_mock = MockRedisClient()
     cache = DistributedProbeCache(redis_client=redis_mock)
-    dlq = DeadLetterQueue()
     apm = APMMetricsBridge()
 
     def run_tenant_probe_task(task_id: int):
         tenant_id = f"scale_tenant_{task_id % 50}"
         prompt = f"How agent-ready is domain {task_id}?"
-        start_t = time.time()
 
         # 1. Budget reservation
         cache.increment_tenant_usage(tenant_id, probe_cost_units=1)

@@ -5,11 +5,31 @@ from packages.core.schemas import ComponentStatus, Score, ScoreComponent
 
 
 def test_score_delta_tracker_regression():
-    c_base = ScoreComponent(name="llms_txt", display_name="llms.txt", score=100.0, weight=0.3, status=ComponentStatus.PASS)
-    c_curr = ScoreComponent(name="llms_txt", display_name="llms.txt", score=0.0, weight=0.3, status=ComponentStatus.FAIL)
+    c_base = ScoreComponent(
+        name="llms_txt", display_name="llms.txt", score=100.0, weight=0.3, status=ComponentStatus.PASS
+    )
+    c_curr = ScoreComponent(
+        name="llms_txt", display_name="llms.txt", score=0.0, weight=0.3, status=ComponentStatus.FAIL
+    )
 
-    base = Score(url="https://site.com", version="v0.1", overall_score=90.0, grade="A+", components=[c_base], summary="Good", recommendations=[])
-    curr = Score(url="https://site.com", version="v0.1", overall_score=60.0, grade="C", components=[c_curr], summary="Degraded", recommendations=[])
+    base = Score(
+        url="https://site.com",
+        version="v0.1",
+        overall_score=90.0,
+        grade="A+",
+        components=[c_base],
+        summary="Good",
+        recommendations=[],
+    )
+    curr = Score(
+        url="https://site.com",
+        version="v0.1",
+        overall_score=60.0,
+        grade="C",
+        components=[c_curr],
+        summary="Degraded",
+        recommendations=[],
+    )
 
     delta = ScoreDeltaTracker.compute_delta(base, curr)
     assert delta["change_type"] == "REGRESSION"

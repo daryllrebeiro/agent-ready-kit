@@ -1,6 +1,5 @@
 """Per-tenant probe quota and budget cap enforcement."""
 
-from typing import Dict
 from packages.core.auth.context import TenantContext
 
 
@@ -9,7 +8,7 @@ class QuotaManager:
 
     def __init__(self):
         # In-memory usage map (org_id -> int current_month_usage)
-        self._usage: Dict[str, int] = {}
+        self._usage: dict[str, int] = {}
 
     def check_and_increment(self, ctx: TenantContext, requested_probes: int = 1) -> bool:
         """Check if tenant has remaining quota and atomically increment usage."""

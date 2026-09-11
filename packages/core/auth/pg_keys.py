@@ -82,8 +82,7 @@ class PgAuthManager:
         cur = self.conn.conn.cursor()
         # FK api_keys_tenant_id_fkey requires the org row: create idempotently.
         cur.execute(
-            "INSERT INTO organizations (id, name, plan) VALUES (?, ?, 'free') "
-            "ON CONFLICT (id) DO NOTHING",
+            "INSERT INTO organizations (id, name, plan) VALUES (?, ?, 'free') ON CONFLICT (id) DO NOTHING",
             (tenant_id, tenant_id),
         )
         cur.execute(
@@ -129,8 +128,7 @@ class PgAuthManager:
 
         cur = self.conn.conn.cursor()
         cur.execute(
-            "SELECT tenant_id, org_id, role, scopes, revoked, expires_at "
-            "FROM api_keys WHERE key_hash = ?",
+            "SELECT tenant_id, org_id, role, scopes, revoked, expires_at FROM api_keys WHERE key_hash = ?",
             (hashed,),
         )
         row = cur.fetchone()
@@ -167,9 +165,7 @@ class PgAuthManager:
             return None
         return self.resolve_api_key(credentials.strip())
 
-    def generate_domain_share_token(
-        self, tenant_id: str, domain_url: str, ttl_seconds: int = 86400
-    ) -> str:
+    def generate_domain_share_token(self, tenant_id: str, domain_url: str, ttl_seconds: int = 86400) -> str:
         raw_token = f"dst_{secrets.token_urlsafe(24)}"
         hashed = self.hash_key(raw_token)
         self._share_tokens[hashed] = {

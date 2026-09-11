@@ -11,7 +11,7 @@ against a genuine PostgreSQL engine — not a simulation. The mock remains
 for offline unit tests only and is never used on any real path.
 """
 
-from typing import Any, Optional
+from typing import Any
 
 try:
     import psycopg
@@ -77,18 +77,16 @@ class RealPgConnection:
     `.cursor()` / `.commit()`), `set_session_tenant` / `get_session_tenant`.
     """
 
-    def __init__(self, dsn: Optional[str] = None):
+    def __init__(self, dsn: str | None = None):
         if not _PSYCOPG_AVAILABLE:
-            raise RuntimeError(
-                "psycopg is not installed. Install with: pip install 'psycopg[binary]'"
-            )
+            raise RuntimeError("psycopg is not installed. Install with: pip install 'psycopg[binary]'")
         import os
 
         self.dsn = dsn or os.environ.get("DATABASE_URL", DEFAULT_DSN)
         self._raw = psycopg.connect(self.dsn, row_factory=dict_row)
         self._raw.autocommit = False
         self.conn = _RawFacade(self._raw)
-        self._tenant: Optional[str] = None
+        self._tenant: str | None = None
 
     def cursor(self) -> _QmarkCursor:
         return _QmarkCursor(self._raw.cursor())
@@ -102,7 +100,7 @@ class RealPgConnection:
             cur.close()
         self._tenant = tenant_id
 
-    def get_session_tenant(self) -> Optional[str]:
+    def get_session_tenant(self) -> str | None:
         return self._tenant
 
     def commit(self) -> None:
@@ -115,6 +113,6 @@ class RealPgConnection:
         self._raw.close()
 
 
-def connect_real(dsn: Optional[str] = None) -> RealPgConnection:
+def connect_real(dsn: str | None = None) -> RealPgConnection:
     """Open a real PostgreSQL connection (raises if unreachable)."""
     return RealPgConnection(dsn=dsn)

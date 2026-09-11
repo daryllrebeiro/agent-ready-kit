@@ -1,8 +1,6 @@
 """Tests for Postgres Row-Level Security under connection pooling (PgBouncer transaction-mode)."""
 
 import sqlite3
-import pytest
-from packages.core.storage.postgres_rls import PostgresRLSRepository, MockPostgresConnection
 
 
 class SimulatedPgBouncerConnection:
@@ -60,7 +58,7 @@ def test_sqlite_fallback_tenant_query_scoping():
     conn = sqlite3.connect(":memory:")
     cursor = conn.cursor()
     cursor.execute("CREATE TABLE scores (id INTEGER PRIMARY KEY, tenant_id TEXT, score INTEGER)")
-    
+
     cursor.execute("INSERT INTO scores (tenant_id, score) VALUES ('tenant_1', 85)")
     cursor.execute("INSERT INTO scores (tenant_id, score) VALUES ('tenant_2', 92)")
     conn.commit()

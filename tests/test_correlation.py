@@ -31,9 +31,42 @@ def test_spearman_rank_correlation():
 def test_correlation_harness_dataset():
     harness = CorrelationHarness()
     samples = [
-        {"score": {"overall_score": 90.0, "components": [{"name": "llms_txt", "score": 90}, {"name": "structured_data", "score": 90}, {"name": "token_bloat", "score": 90}, {"name": "bot_permissions", "score": 90}]}, "citation_rate": 0.90},
-        {"score": {"overall_score": 70.0, "components": [{"name": "llms_txt", "score": 70}, {"name": "structured_data", "score": 70}, {"name": "token_bloat", "score": 70}, {"name": "bot_permissions", "score": 70}]}, "citation_rate": 0.70},
-        {"score": {"overall_score": 30.0, "components": [{"name": "llms_txt", "score": 30}, {"name": "structured_data", "score": 30}, {"name": "token_bloat", "score": 30}, {"name": "bot_permissions", "score": 30}]}, "citation_rate": 0.20},
+        {
+            "score": {
+                "overall_score": 90.0,
+                "components": [
+                    {"name": "llms_txt", "score": 90},
+                    {"name": "structured_data", "score": 90},
+                    {"name": "token_bloat", "score": 90},
+                    {"name": "bot_permissions", "score": 90},
+                ],
+            },
+            "citation_rate": 0.90,
+        },
+        {
+            "score": {
+                "overall_score": 70.0,
+                "components": [
+                    {"name": "llms_txt", "score": 70},
+                    {"name": "structured_data", "score": 70},
+                    {"name": "token_bloat", "score": 70},
+                    {"name": "bot_permissions", "score": 70},
+                ],
+            },
+            "citation_rate": 0.70,
+        },
+        {
+            "score": {
+                "overall_score": 30.0,
+                "components": [
+                    {"name": "llms_txt", "score": 30},
+                    {"name": "structured_data", "score": 30},
+                    {"name": "token_bloat", "score": 30},
+                    {"name": "bot_permissions", "score": 30},
+                ],
+            },
+            "citation_rate": 0.20,
+        },
     ]
 
     res = harness.analyze_dataset(samples)

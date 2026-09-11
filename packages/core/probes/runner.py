@@ -1,6 +1,7 @@
 """Probe orchestration and batch execution."""
 
-from typing import Any, Dict, List, Optional
+from typing import Any
+
 from packages.core.probes.base import BaseProbe
 from packages.core.probes.prompts import STANDARD_PROBE_PROMPTS
 from packages.core.probes.providers import AnthropicProbe, GeminiProbe, OpenAIProbe, PerplexityProbe
@@ -10,7 +11,7 @@ from packages.core.schemas import ProbeResult
 class MultiModelProber:
     """Orchestrates multi-model citation probing across all major LLM search providers."""
 
-    def __init__(self, providers: Optional[List[BaseProbe]] = None):
+    def __init__(self, providers: list[BaseProbe] | None = None):
         self.providers = providers or [
             OpenAIProbe(),
             AnthropicProbe(),
@@ -21,12 +22,12 @@ class MultiModelProber:
     def probe_prompt(
         self,
         prompt: str,
-        target_domain: Optional[str] = None,
+        target_domain: str | None = None,
         dry_run: bool = False,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Execute a prompt across all providers and check for citations of target_domain."""
-        results: List[ProbeResult] = []
-        is_cited_by: List[str] = []
+        results: list[ProbeResult] = []
+        is_cited_by: list[str] = []
 
         for provider in self.providers:
             res = provider.probe(prompt, dry_run=dry_run)
@@ -44,10 +45,10 @@ class MultiModelProber:
 
     def run_standard_probe_suite(
         self,
-        target_domain: Optional[str] = None,
+        target_domain: str | None = None,
         max_prompts: int = 5,
         dry_run: bool = False,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """Run standard benchmark prompts across all providers."""
         suite_results = []
         for prompt_meta in STANDARD_PROBE_PROMPTS[:max_prompts]:
@@ -63,11 +64,11 @@ class MultiModelProber:
 
     def run_prompt_suite(
         self,
-        prompts: List[str],
+        prompts: list[str],
         dry_run: bool = False,
-    ) -> List[ProbeResult]:
+    ) -> list[ProbeResult]:
         """Run multiple prompts across all providers and return flat list of ProbeResults."""
-        all_results: List[ProbeResult] = []
+        all_results: list[ProbeResult] = []
         for p in prompts:
             for provider in self.providers:
                 res = provider.probe(p, dry_run=dry_run)

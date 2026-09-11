@@ -1,8 +1,8 @@
 """Self-Service Multi-Tenant Data Exporter (GDPR Article 20 & SOC 2 Data Portability)."""
 
-import json
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any
+
 from packages.core.storage.postgres_rls import PostgresRLSRepository
 
 
@@ -12,7 +12,7 @@ class TenantDataExporter:
     def __init__(self, repository: PostgresRLSRepository):
         self.repo = repository
 
-    def export_tenant_data_bundle(self, tenant_id: str) -> Dict[str, Any]:
+    def export_tenant_data_bundle(self, tenant_id: str) -> dict[str, Any]:
         """Generates a complete, structured JSON export bundle strictly scoped to the requesting tenant."""
         domains = self.repo.list_domains(tenant_id)
         exported_domains = []
@@ -20,12 +20,14 @@ class TenantDataExporter:
         for d in domains:
             domain_url = d["domain_url"]
             scores = self.repo.get_score_history(tenant_id, domain_url, limit=100)
-            exported_domains.append({
-                "domain_id": d["id"],
-                "domain_url": domain_url,
-                "created_at": d.get("created_at"),
-                "scores": scores,
-            })
+            exported_domains.append(
+                {
+                    "domain_id": d["id"],
+                    "domain_url": domain_url,
+                    "created_at": d.get("created_at"),
+                    "scores": scores,
+                }
+            )
 
         bundle = {
             "export_metadata": {

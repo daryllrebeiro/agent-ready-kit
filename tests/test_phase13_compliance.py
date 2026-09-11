@@ -1,10 +1,9 @@
 """Phase 13 Compliance & Enterprise Tests: Retention Purge, Data Export, and ToS Consent."""
 
-import pytest
-from packages.core.compliance.retention import RetentionPurgeDaemon, ToSAuditLogger
 from packages.core.compliance.exporter import TenantDataExporter
+from packages.core.compliance.retention import RetentionPurgeDaemon, ToSAuditLogger
+from packages.core.schemas import ComponentStatus, Score, ScoreComponent
 from packages.core.storage.postgres_rls import MockPostgresConnection, PostgresRLSRepository
-from packages.core.schemas import Score, ScoreComponent, ComponentStatus
 
 
 def test_retention_purge_lifecycle_policies():
@@ -27,6 +26,49 @@ def test_retention_purge_lifecycle_policies():
     assert ent_purge["retention_days"] == 365
 
 
+def test_retention_purge_deletes_only_stale_rows():
+    """Phase 17 regression: purge previously simulated execution and always
+    reported zeros. Seed one stale + one fresh score; assert the stale row
+    is actually gone and the fresh row survives."""
+    from datetime import UTC, datetime, timedelta
+
+    pg_conn = MockPostgresConnection()
+    repo = PostgresRLSRepository(connection=pg_conn)
+    daemon = RetentionPurgeDaemon(repository=repo)
+
+    tenant = "tenant_purge_real"
+    repo.create_organization(tenant, "Purge Corp", "free")
+    now = datetime.now(UTC)
+    old_iso = (now - timedelta(days=60)).isoformat()
+    fresh_iso = now.isoformat()
+
+    cur = pg_conn.conn.cursor()
+    cur.execute(
+        "INSERT INTO domains (id, tenant_id, domain_url, created_at) VALUES (?, ?, ?, ?)",
+        ("dom_purge_1", tenant, "https://purge.example", fresh_iso),
+    )
+    for created, grade in ((old_iso, "D"), (fresh_iso, "B")):
+        cur.execute(
+            """INSERT INTO scores (id, tenant_id, domain_id, overall_score,
+               grade, score_version, raw_json, scanned_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                f"sc_purge_{grade}", tenant, "dom_purge_1",
+                40.0 if grade == "D" else 80.0, grade, "score_v0.1", "{}", created,
+            ),
+        )
+    pg_conn.conn.commit()
+
+    result = daemon.purge_tenant_stale_data(tenant, plan_tier="free")
+    assert result["status"] == "COMPLETED"
+    assert result["purged_scores_count"] == 1
+
+    remaining = cur.execute(
+        "SELECT grade FROM scores WHERE tenant_id = ?", (tenant,)
+    ).fetchall()
+    assert [dict(r)["grade"] for r in remaining] == ["B"]
+
+
 def test_tenant_data_export_portability_and_isolation():
     """Verifies that self-service data export includes all tenant assets and never leaks cross-tenant records."""
     pg_conn = MockPostgresConnection()
@@ -39,7 +81,16 @@ def test_tenant_data_export_portability_and_isolation():
         url="https://alpha.com",
         overall_score=92.0,
         grade="A",
-        components=[ScoreComponent(name="robots_txt", display_name="Robots.txt", score=100.0, weight=0.2, status=ComponentStatus.PASS, details="OK")],
+        components=[
+            ScoreComponent(
+                name="robots_txt",
+                display_name="Robots.txt",
+                score=100.0,
+                weight=0.2,
+                status=ComponentStatus.PASS,
+                details="OK",
+            )
+        ],
     )
     repo.save_score("tenant_alpha", "https://alpha.com", score_alpha)
 

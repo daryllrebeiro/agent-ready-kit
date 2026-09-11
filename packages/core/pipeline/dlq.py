@@ -1,10 +1,10 @@
 """Dead-Letter Queue (DLQ) for capturing and retrying failed probe jobs with alert escalation."""
 
-import time
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from typing import Any, Callable, Dict, List, Optional
+from datetime import UTC, datetime
+from typing import Any
 
 
 @dataclass
@@ -18,8 +18,8 @@ class FailedJob:
     prompt: str
     error_message: str
     retry_count: int = 0
-    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+    metadata: dict[str, Any] = field(default_factory=dict)
     status: str = "QUEUED"  # "QUEUED", "REPLAYING", "RESOLVED", "ESCALATED"
 
 
@@ -28,8 +28,8 @@ class DeadLetterQueue:
 
     def __init__(self, max_items: int = 1000):
         self.max_items = max_items
-        self._queue: List[FailedJob] = []
-        self._escalated: List[FailedJob] = []
+        self._queue: list[FailedJob] = []
+        self._escalated: list[FailedJob] = []
 
     def __len__(self) -> int:
         return len(self._queue)
@@ -41,7 +41,7 @@ class DeadLetterQueue:
         target_url: str,
         prompt: str,
         error_message: str,
-        metadata: Optional[Dict[str, Any]] = None,
+        metadata: dict[str, Any] | None = None,
     ) -> FailedJob:
         """Enqueue a failed probe execution."""
         job = FailedJob(
@@ -58,7 +58,7 @@ class DeadLetterQueue:
             self._queue.pop(0)
         return job
 
-    def pop(self) -> Optional[FailedJob]:
+    def pop(self) -> FailedJob | None:
         """Retrieve next failed job for re-processing."""
         if self._queue:
             return self._queue.pop(0)
@@ -68,8 +68,8 @@ class DeadLetterQueue:
         self,
         executor: Callable[[FailedJob], bool],
         max_retries: int = 3,
-        escalation_callback: Optional[Callable[[FailedJob], None]] = None,
-    ) -> Dict[str, int]:
+        escalation_callback: Callable[[FailedJob], None] | None = None,
+    ) -> dict[str, int]:
         """Processes all queued DLQ jobs with retry tracking and escalation."""
         results = {"replayed": 0, "succeeded": 0, "failed": 0, "escalated": 0}
         pending = list(self._queue)
@@ -105,7 +105,7 @@ class DeadLetterQueue:
     def escalated_size(self) -> int:
         return len(self._escalated)
 
-    def list_jobs(self, org_id: Optional[str] = None) -> List[FailedJob]:
+    def list_jobs(self, org_id: str | None = None) -> list[FailedJob]:
         if org_id:
             return [j for j in self._queue if j.org_id == org_id]
         return list(self._queue)

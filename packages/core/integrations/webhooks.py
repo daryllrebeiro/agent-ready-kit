@@ -4,7 +4,8 @@ import hashlib
 import hmac
 import json
 import time
-from typing import Any, Dict
+from typing import Any
+
 import requests
 
 
@@ -24,8 +25,8 @@ class WebhookDispatcher:
         endpoint_url: str,
         secret_key: str,
         event_type: str,
-        data: Dict[str, Any],
-    ) -> Dict[str, Any]:
+        data: dict[str, Any],
+    ) -> dict[str, Any]:
         """Send webhook event with X-AgentReady-Signature and X-AgentReady-Timestamp."""
         timestamp = str(int(time.time()))
         payload_dict = {

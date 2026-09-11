@@ -7,7 +7,7 @@ with automated safety rollback triggers upon SLO breaches.
 import hashlib
 import time
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 
 class RolloutStage(str, Enum):
@@ -23,11 +23,13 @@ class GraduatedRolloutController:
     def __init__(
         self,
         initial_stage: RolloutStage = RolloutStage.PILOT_10,
-        allowed_canary_tenants: Optional[List[str]] = None,
+        allowed_canary_tenants: list[str] | None = None,
     ):
         self.stage = initial_stage
-        self.canary_tenants = set(allowed_canary_tenants or ["tenant_enterprise_beta_1", "tenant_growth_pilot_2"])
-        self.stage_history: List[Dict[str, Any]] = [
+        self.canary_tenants = set(
+            allowed_canary_tenants or ["tenant_enterprise_beta_1", "tenant_growth_pilot_2"]
+        )
+        self.stage_history: list[dict[str, Any]] = [
             {"stage": self.stage.value, "timestamp": time.time(), "reason": "Initial deployment"}
         ]
 
@@ -54,7 +56,7 @@ class GraduatedRolloutController:
 
         return False
 
-    def promote_stage(self, new_stage: RolloutStage, reason: str = "SLO validation passed") -> Dict[str, Any]:
+    def promote_stage(self, new_stage: RolloutStage, reason: str = "SLO validation passed") -> dict[str, Any]:
         """Promotes the rollout to the next stage."""
         self.stage = new_stage
         event = {
@@ -65,7 +67,7 @@ class GraduatedRolloutController:
         self.stage_history.append(event)
         return event
 
-    def trigger_emergency_rollback(self, breach_reason: str) -> Dict[str, Any]:
+    def trigger_emergency_rollback(self, breach_reason: str) -> dict[str, Any]:
         """Immediately rolls back traffic to 0% in response to critical SLO or DLQ breach."""
         self.stage = RolloutStage.ROLLED_BACK
         event = {

@@ -1,6 +1,7 @@
 """Official Python client SDK for AgentReady."""
 
-from typing import Any, Dict, List, Optional
+from typing import Any
+
 import requests
 
 from packages.core.badges.generator import BadgeGenerator
@@ -16,7 +17,7 @@ class AgentReadyClient:
 
     def __init__(
         self,
-        api_key: Optional[str] = None,
+        api_key: str | None = None,
         base_url: str = "http://localhost:3000",
         use_local_engine: bool = True,
     ):
@@ -40,19 +41,24 @@ class AgentReadyClient:
         resp.raise_for_status()
         return Score.model_validate(resp.json())
 
-    def probe(self, url: str, dry_run: bool = True, max_prompts: int = 3) -> List[Dict[str, Any]]:
+    def probe(self, url: str, dry_run: bool = True, max_prompts: int = 3) -> list[dict[str, Any]]:
         """Probe LLM providers to check live citation behavior."""
         if self.use_local_engine and self._prober:
             from packages.core.probes.extractor import extract_domain_from_url
+
             domain = extract_domain_from_url(url)
-            return self._prober.run_standard_probe_suite(target_domain=domain, max_prompts=max_prompts, dry_run=dry_run)
+            return self._prober.run_standard_probe_suite(
+                target_domain=domain, max_prompts=max_prompts, dry_run=dry_run
+            )
 
         headers = {"Authorization": f"Bearer {self.api_key}"} if self.api_key else {}
-        resp = requests.post(f"{self.base_url}/api/probe", json={"url": url, "dry_run": dry_run}, headers=headers, timeout=30.0)
+        resp = requests.post(
+            f"{self.base_url}/api/probe", json={"url": url, "dry_run": dry_run}, headers=headers, timeout=30.0
+        )
         resp.raise_for_status()
         return resp.json()
 
-    def compare(self, target_url: str, competitor_urls: List[str], dry_run: bool = True) -> Dict[str, Any]:
+    def compare(self, target_url: str, competitor_urls: list[str], dry_run: bool = True) -> dict[str, Any]:
         """Compare citation share and readiness against competitors."""
         if self.use_local_engine and self._competitors:
             return self._competitors.compare_domains(target_url, competitor_urls, dry_run=dry_run)
@@ -67,7 +73,7 @@ class AgentReadyClient:
         resp.raise_for_status()
         return resp.json()
 
-    def fix(self, url: str, output_dir: Optional[str] = None) -> Dict[str, str]:
+    def fix(self, url: str, output_dir: str | None = None) -> dict[str, str]:
         """Generate drop-in remediation files (llms.txt, robots.txt, schema-ld.json)."""
         fixer = self._fixer or FixerEngine()
         fixes = fixer.generate_all_fixes(url)

@@ -1,6 +1,5 @@
 """Unit tests for CLI authentication and credential storage."""
 
-import os
 from packages.cli.auth import clear_api_key, get_stored_api_key, save_api_key
 
 

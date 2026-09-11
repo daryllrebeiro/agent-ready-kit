@@ -1,6 +1,7 @@
 """Unit tests for automated remediation FixerEngine."""
 
 import os
+
 from packages.core.fixer.engine import FixerEngine
 
 

@@ -10,13 +10,11 @@ Citation-rate correlation will be measured when real LLM API keys are
 available (Phase 16 Task 8+). The prior `r >= 0.65` claim is retracted.
 """
 
-import csv
 import os
 
 import pytest
 
 from packages.core.scorer import Scorer
-
 
 DATASET_PATH = os.path.join(os.path.dirname(__file__), "..", "data", "real_domains_correlation.csv")
 
@@ -85,4 +83,4 @@ def test_prior_synthetic_correlation_test_removed():
     """
     # The synthetic test was: random.seed(42); for i in range(250): ...
     # This replacement test file does not contain that logic.
-    pass  # existence of this replacement file proves the old one is removed
+    # existence of this replacement file proves the old one is removed

@@ -4,6 +4,7 @@ import hashlib
 import hmac
 import json
 import time
+
 from packages.core.billing.stripe_engine import StripeBillingEngine
 
 
@@ -11,12 +12,16 @@ def test_billing_units_calculation():
     engine = StripeBillingEngine()
 
     # 1. Basic calculation
-    est_free = engine.calculate_estimated_monthly_units(domain_count=2, probes_per_domain_per_month=10, languages_count=1, include_personas=False)
+    est_free = engine.calculate_estimated_monthly_units(
+        domain_count=2, probes_per_domain_per_month=10, languages_count=1, include_personas=False
+    )
     assert est_free["recommended_tier"] == "free"
     assert est_free["tier_price_usd"] == 0
 
     # 2. Multilingual with personas multiplier (4 personas * 5 languages = 20x)
-    est_growth = engine.calculate_estimated_monthly_units(domain_count=10, probes_per_domain_per_month=30, languages_count=5, include_personas=True)
+    est_growth = engine.calculate_estimated_monthly_units(
+        domain_count=10, probes_per_domain_per_month=30, languages_count=5, include_personas=True
+    )
     assert est_growth["total_monthly_probes"] == 10 * 30 * 5 * 4  # 6,000 probes
     assert est_growth["recommended_tier"] == "enterprise"
     assert est_growth["tier_price_usd"] == 499
@@ -48,11 +53,11 @@ def test_stripe_webhook_subscription_lifecycle_and_idempotency():
                 "customer": "org_test_tenant",
                 "metadata": {"tenant_id": "org_test_tenant", "tier": "growth"},
             }
-        }
+        },
     }
 
     # 1. Process creation
-    success, msg = engine.handle_webhook_event(json.dumps(create_event))
+    success, _msg = engine.handle_webhook_event(json.dumps(create_event))
     assert success is True
     sub = engine.get_subscription("org_test_tenant")
     assert sub is not None
@@ -73,7 +78,7 @@ def test_stripe_webhook_subscription_lifecycle_and_idempotency():
                 "customer": "org_test_tenant",
                 "metadata": {"tenant_id": "org_test_tenant"},
             }
-        }
+        },
     }
     engine.handle_webhook_event(json.dumps(payment_fail_event))
     assert engine.get_subscription("org_test_tenant")["status"] == "past_due"
@@ -87,7 +92,7 @@ def test_stripe_webhook_subscription_lifecycle_and_idempotency():
                 "customer": "org_test_tenant",
                 "metadata": {"tenant_id": "org_test_tenant"},
             }
-        }
+        },
     }
     engine.handle_webhook_event(json.dumps(payment_success_event))
     assert engine.get_subscription("org_test_tenant")["status"] == "active"

@@ -1,6 +1,7 @@
 """Autonomous monitoring and daily delta tracking between scans."""
 
-from typing import Any, Dict, List, Optional
+from typing import Any
+
 from packages.core.schemas import ComponentStatus, Score
 
 
@@ -8,13 +9,13 @@ class ScoreDeltaTracker:
     """Computes regressions, improvements, and change digests between score snapshots."""
 
     @staticmethod
-    def compute_delta(baseline: Score, current: Score) -> Dict[str, Any]:
+    def compute_delta(baseline: Score, current: Score) -> dict[str, Any]:
         """Compare two scores and generate a delta report."""
         score_diff = round(current.overall_score - baseline.overall_score, 1)
         grade_changed = baseline.grade != current.grade
 
-        component_regressions: List[Dict[str, str]] = []
-        component_improvements: List[Dict[str, str]] = []
+        component_regressions: list[dict[str, str]] = []
+        component_improvements: list[dict[str, str]] = []
 
         base_comps = {c.name: c for c in baseline.components}
         curr_comps = {c.name: c for c in current.components}
@@ -26,23 +27,29 @@ class ScoreDeltaTracker:
 
             diff = round(curr_c.score - base_c.score, 1)
             if diff < 0 or (base_c.status == ComponentStatus.PASS and curr_c.status != ComponentStatus.PASS):
-                component_regressions.append({
-                    "component": curr_c.display_name,
-                    "previous_score": f"{base_c.score:.1f}",
-                    "current_score": f"{curr_c.score:.1f}",
-                    "delta": f"{diff:+.1f}",
-                    "previous_status": base_c.status.value,
-                    "current_status": curr_c.status.value,
-                })
-            elif diff > 0 or (base_c.status != ComponentStatus.PASS and curr_c.status == ComponentStatus.PASS):
-                component_improvements.append({
-                    "component": curr_c.display_name,
-                    "previous_score": f"{base_c.score:.1f}",
-                    "current_score": f"{curr_c.score:.1f}",
-                    "delta": f"{diff:+.1f}",
-                    "previous_status": base_c.status.value,
-                    "current_status": curr_c.status.value,
-                })
+                component_regressions.append(
+                    {
+                        "component": curr_c.display_name,
+                        "previous_score": f"{base_c.score:.1f}",
+                        "current_score": f"{curr_c.score:.1f}",
+                        "delta": f"{diff:+.1f}",
+                        "previous_status": base_c.status.value,
+                        "current_status": curr_c.status.value,
+                    }
+                )
+            elif diff > 0 or (
+                base_c.status != ComponentStatus.PASS and curr_c.status == ComponentStatus.PASS
+            ):
+                component_improvements.append(
+                    {
+                        "component": curr_c.display_name,
+                        "previous_score": f"{base_c.score:.1f}",
+                        "current_score": f"{curr_c.score:.1f}",
+                        "delta": f"{diff:+.1f}",
+                        "previous_status": base_c.status.value,
+                        "current_status": curr_c.status.value,
+                    }
+                )
 
         # Summary classification
         if score_diff < -5.0 or component_regressions:

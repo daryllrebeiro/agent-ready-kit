@@ -2,6 +2,7 @@
 
 import json
 from pathlib import Path
+
 from packages.sdk_python.agentready.client import AgentReadyClient
 
 
@@ -35,7 +36,7 @@ def test_openapi_contract_endpoint_coverage():
 
 def test_python_sdk_contract_method_signatures():
     client = AgentReadyClient(api_key="test_key", base_url="http://localhost:8000")
-    
+
     # Check that public methods match client contract
     assert hasattr(client, "scan")
     assert hasattr(client, "probe")

@@ -3,13 +3,12 @@
 Calculates estimated COGS per probe and guarantees subscription gross profit margins >= 70%.
 """
 
-from typing import Any, Dict
-
+from typing import Any
 
 ESTIMATED_COGS_PER_PROBE_USD = {
-    "openai": 0.003,      # ~$0.003 per probe call (GPT-4o-mini / search)
-    "anthropic": 0.004,   # ~$0.004 per probe call (Claude 3.5 Haiku)
-    "gemini": 0.0015,     # ~$0.0015 per probe call (Gemini 1.5 Flash)
+    "openai": 0.003,  # ~$0.003 per probe call (GPT-4o-mini / search)
+    "anthropic": 0.004,  # ~$0.004 per probe call (Claude 3.5 Haiku)
+    "gemini": 0.0015,  # ~$0.0015 per probe call (Gemini 1.5 Flash)
     "perplexity": 0.005,  # ~$0.005 per probe call (Sonar API)
 }
 
@@ -30,7 +29,7 @@ class GrossMarginGuardrail:
     """Evaluates unit profitability and ensures COGS stays within sustainable SaaS boundaries."""
 
     @staticmethod
-    def calculate_plan_gross_margin(plan_tier: str) -> Dict[str, Any]:
+    def calculate_plan_gross_margin(plan_tier: str) -> dict[str, Any]:
         """Calculates theoretical gross margin assuming 100% quota utilization."""
         revenue = PLAN_PRICING_USD.get(plan_tier.lower(), 0.0)
         probes_allowed = PLAN_INCLUDED_PROBES.get(plan_tier.lower(), 50)

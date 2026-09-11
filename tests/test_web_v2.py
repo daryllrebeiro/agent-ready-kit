@@ -5,7 +5,9 @@ import threading
 import time
 from http.client import HTTPConnection
 from http.server import HTTPServer
+
 import pytest
+
 import apps.web.server as web_server
 from apps.web.server import DashboardAPIHandler
 
@@ -35,7 +37,7 @@ def test_api_simulate_endpoint(web_v2_server, auth_key):
         "POST",
         "/api/simulate",
         body=payload,
-        headers={"Content-Type": "application/json", "Authorization": f"Bearer {auth_key}"}
+        headers={"Content-Type": "application/json", "Authorization": f"Bearer {auth_key}"},
     )
     resp = conn.getresponse()
     assert resp.status == 200
@@ -46,16 +48,18 @@ def test_api_simulate_endpoint(web_v2_server, auth_key):
 
 def test_api_compare_endpoint(web_v2_server, auth_key):
     conn = HTTPConnection("127.0.0.1", web_v2_server)
-    payload = json.dumps({
-        "target_url": "https://example.com",
-        "competitor_urls": ["https://competitor.com"],
-        "dry_run": True,
-    })
+    payload = json.dumps(
+        {
+            "target_url": "https://example.com",
+            "competitor_urls": ["https://competitor.com"],
+            "dry_run": True,
+        }
+    )
     conn.request(
         "POST",
         "/api/compare",
         body=payload,
-        headers={"Content-Type": "application/json", "Authorization": f"Bearer {auth_key}"}
+        headers={"Content-Type": "application/json", "Authorization": f"Bearer {auth_key}"},
     )
     resp = conn.getresponse()
     assert resp.status == 200
@@ -68,9 +72,7 @@ def test_api_compare_endpoint(web_v2_server, auth_key):
 def test_api_report_endpoint(web_v2_server, auth_key):
     conn = HTTPConnection("127.0.0.1", web_v2_server)
     conn.request(
-        "GET",
-        "/api/report?url=https://example.com",
-        headers={"Authorization": f"Bearer {auth_key}"}
+        "GET", "/api/report?url=https://example.com", headers={"Authorization": f"Bearer {auth_key}"}
     )
     resp = conn.getresponse()
     assert resp.status == 200

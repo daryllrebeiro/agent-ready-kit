@@ -1,15 +1,14 @@
 """Phase 12 Data & Tenancy Tests: 12-Month Migration Volume & Redis Partition Resilience."""
 
 import gc
-import json
 import os
 import sqlite3
 import tempfile
-import pytest
-from packages.core.storage.migration import SQLiteToPostgresMigrator
-from packages.core.storage.postgres_rls import MockPostgresConnection, PostgresRLSRepository
+
 from packages.core.probes.redis_cache import DistributedProbeCache, MockRedisClient
 from packages.core.schemas import ComponentStatus, ProbeResult, Score, ScoreComponent
+from packages.core.storage.migration import SQLiteToPostgresMigrator
+from packages.core.storage.postgres_rls import MockPostgresConnection, PostgresRLSRepository
 
 
 def test_12_month_projected_scale_migration():

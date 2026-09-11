@@ -1,10 +1,10 @@
 """Cross-lingual and international prompt probing for global AI search visibility."""
 
-from typing import Any, Dict, List, Optional
-from packages.core.probes.runner import MultiModelProber
-from packages.core.schemas import ProbeResult
+from typing import Any
 
-MULTILINGUAL_PROBE_PROMPTS: Dict[str, List[Dict[str, str]]] = {
+from packages.core.probes.runner import MultiModelProber
+
+MULTILINGUAL_PROBE_PROMPTS: dict[str, list[dict[str, str]]] = {
     "es": [
         {
             "id": "es_tools_1",
@@ -57,7 +57,7 @@ class MultilingualProber:
         target_domain: str,
         lang: str = "es",
         dry_run: bool = True,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Probe LLMs with localized prompts in specified language."""
         prompts = MULTILINGUAL_PROBE_PROMPTS.get(lang.lower(), MULTILINGUAL_PROBE_PROMPTS["es"])
         prompt_texts = [p["prompt"] for p in prompts]

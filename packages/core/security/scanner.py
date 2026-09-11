@@ -6,7 +6,7 @@ import re
 import sys
 import urllib.parse
 from pathlib import Path
-from typing import Any, Dict, List, Tuple
+from typing import Any
 
 SECRET_PATTERNS = [
     (re.compile(r"sk-[a-zA-Z0-9]{20,}", re.IGNORECASE), "OpenAI API Key"),
@@ -14,8 +14,16 @@ SECRET_PATTERNS = [
     (re.compile(r"AIza[0-9A-Za-z-_]{35}", re.IGNORECASE), "Google API Key"),
     (re.compile(r"pplx-[a-zA-Z0-9]{20,}", re.IGNORECASE), "Perplexity API Key"),
     (re.compile(r"ghp_[a-zA-Z0-9]{36}", re.IGNORECASE), "GitHub Personal Access Token"),
-    (re.compile(r"https://hooks\.slack\.com/services/T[a-zA-Z0-9_]+/B[a-zA-Z0-9_]+/[a-zA-Z0-9_]+", re.IGNORECASE), "Slack Webhook URL"),
-    (re.compile(r"https://discord\.com/api/webhooks/[0-9]+/[a-zA-Z0-9_-]+", re.IGNORECASE), "Discord Webhook URL"),
+    (
+        re.compile(
+            r"https://hooks\.slack\.com/services/T[a-zA-Z0-9_]+/B[a-zA-Z0-9_]+/[a-zA-Z0-9_]+", re.IGNORECASE
+        ),
+        "Slack Webhook URL",
+    ),
+    (
+        re.compile(r"https://discord\.com/api/webhooks/[0-9]+/[a-zA-Z0-9_-]+", re.IGNORECASE),
+        "Discord Webhook URL",
+    ),
 ]
 
 BLOCKED_HOSTNAMES = {
@@ -29,7 +37,7 @@ BLOCKED_HOSTNAMES = {
 class SecurityScanner:
     """Audits configurations, HTML source, robots.txt, and repository files for security risks."""
 
-    def scan_content_for_secrets(self, content: str) -> List[Dict[str, str]]:
+    def scan_content_for_secrets(self, content: str) -> list[dict[str, str]]:
         """Identify exposed API keys or credentials."""
         findings = []
         for pattern, label in SECRET_PATTERNS:
@@ -39,10 +47,18 @@ class SecurityScanner:
                 findings.append({"type": label, "match": masked})
         return findings
 
-    def audit_robots_security(self, robots_txt: str) -> List[Dict[str, str]]:
+    def audit_robots_security(self, robots_txt: str) -> list[dict[str, str]]:
         """Check for sensitive internal path disclosures in robots.txt."""
         findings = []
-        sensitive_paths = ["/admin", "/internal", "/staging", "/api/v1/internal", "/.env", "/backup", "/config"]
+        sensitive_paths = [
+            "/admin",
+            "/internal",
+            "/staging",
+            "/api/v1/internal",
+            "/.env",
+            "/backup",
+            "/config",
+        ]
 
         for line in robots_txt.splitlines():
             line_str = line.strip().lower()
@@ -50,15 +66,17 @@ class SecurityScanner:
                 path = line_str.split(":", 1)[1].strip()
                 for sensitive in sensitive_paths:
                     if path.startswith(sensitive):
-                        findings.append({
-                            "severity": "MEDIUM",
-                            "issue": f"Internal path disclosed in robots.txt: '{path}'",
-                            "recommendation": "Use authentication/firewall rules rather than robots.txt disallows for sensitive routes.",
-                        })
+                        findings.append(
+                            {
+                                "severity": "MEDIUM",
+                                "issue": f"Internal path disclosed in robots.txt: '{path}'",
+                                "recommendation": "Use authentication/firewall rules rather than robots.txt disallows for sensitive routes.",
+                            }
+                        )
         return findings
 
     @staticmethod
-    def is_safe_public_url(url: str) -> Tuple[bool, str]:
+    def is_safe_public_url(url: str) -> tuple[bool, str]:
         """Validates that a URL is a safe public endpoint, preventing SSRF attacks against internal networks."""
         try:
             parsed = urllib.parse.urlparse(url.strip())
@@ -75,7 +93,13 @@ class SecurityScanner:
             # Check for direct IP address literals
             try:
                 ip_obj = ipaddress.ip_address(hostname)
-                if ip_obj.is_private or ip_obj.is_loopback or ip_obj.is_link_local or ip_obj.is_multicast or ip_obj.is_reserved:
+                if (
+                    ip_obj.is_private
+                    or ip_obj.is_loopback
+                    or ip_obj.is_link_local
+                    or ip_obj.is_multicast
+                    or ip_obj.is_reserved
+                ):
                     return False, f"SSRF Blocked: Private or internal IP range '{hostname}'"
             except ValueError:
                 # Not an IP literal (is a domain name like example.com)
@@ -83,12 +107,21 @@ class SecurityScanner:
 
             return True, "URL is safe public target."
         except Exception as e:
-            return False, f"URL validation failed: {str(e)}"
+            return False, f"URL validation failed: {e!s}"
 
-    def scan_workspace_tree(self, root_dir: str) -> List[Dict[str, Any]]:
+    def scan_workspace_tree(self, root_dir: str) -> list[dict[str, Any]]:
         """Recursively scan codebase for accidental hardcoded secrets."""
         violations = []
-        ignored_dirs = {".git", ".venv", "node_modules", "__pycache__", ".pytest_cache", "dist", "build", "tests"}
+        ignored_dirs = {
+            ".git",
+            ".venv",
+            "node_modules",
+            "__pycache__",
+            ".pytest_cache",
+            "dist",
+            "build",
+            "tests",
+        }
 
         for root, dirs, files in os.walk(root_dir):
             dirs[:] = [d for d in dirs if d not in ignored_dirs]
@@ -100,10 +133,12 @@ class SecurityScanner:
                             content = f.read()
                             findings = self.scan_content_for_secrets(content)
                             if findings:
-                                violations.append({
-                                    "file": file_path,
-                                    "findings": findings,
-                                })
+                                violations.append(
+                                    {
+                                        "file": file_path,
+                                        "findings": findings,
+                                    }
+                                )
                     except Exception:
                         pass
         return violations

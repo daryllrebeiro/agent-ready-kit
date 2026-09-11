@@ -1,9 +1,7 @@
 """LLM probe cost tracking and tenant unit economics calculator."""
 
-from typing import Dict
-
 # Pricing per 1k tokens / query (USD)
-PROVIDER_PRICING: Dict[str, Dict[str, float]] = {
+PROVIDER_PRICING: dict[str, dict[str, float]] = {
     "openai": {"input_per_1k": 0.0025, "output_per_1k": 0.0100, "per_query": 0.0},
     "anthropic": {"input_per_1k": 0.0030, "output_per_1k": 0.0150, "per_query": 0.0},
     "gemini": {"input_per_1k": 0.0001, "output_per_1k": 0.0004, "per_query": 0.0},
@@ -21,7 +19,9 @@ class CostAuditor:
         output_tokens: int = 400,
     ) -> float:
         """Estimate the USD cost of a single LLM probe query."""
-        pricing = PROVIDER_PRICING.get(provider.lower(), {"input_per_1k": 0.002, "output_per_1k": 0.008, "per_query": 0.0})
+        pricing = PROVIDER_PRICING.get(
+            provider.lower(), {"input_per_1k": 0.002, "output_per_1k": 0.008, "per_query": 0.0}
+        )
         cost = (
             (input_tokens / 1000.0) * pricing.get("input_per_1k", 0.0)
             + (output_tokens / 1000.0) * pricing.get("output_per_1k", 0.0)
@@ -34,7 +34,7 @@ class CostAuditor:
         tier_monthly_price: float,
         probes_executed: int,
         avg_cost_per_probe: float = 0.006,
-    ) -> Dict[str, float]:
+    ) -> dict[str, float]:
         """Compute tenant profitability and gross margin percentage."""
         total_variable_cost = probes_executed * avg_cost_per_probe
         gross_profit = tier_monthly_price - total_variable_cost

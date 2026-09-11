@@ -1,6 +1,5 @@
 """Phase 14 UX & Error Humanization Tests."""
 
-import pytest
 from packages.core.errors.humanized import HumanizedError
 
 

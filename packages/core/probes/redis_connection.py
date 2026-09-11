@@ -6,10 +6,11 @@ Provides a redis-py client presenting the same interface the mock exposes
 """
 
 import os
-from typing import Any, Optional
+from typing import Any
 
 try:
     import redis
+
     _REDIS_AVAILABLE = True
 except Exception:  # pragma: no cover
     redis = None  # type: ignore[assignment]
@@ -18,7 +19,7 @@ except Exception:  # pragma: no cover
 DEFAULT_URL = os.environ.get("REDIS_URL", "redis://127.0.0.1:6380/0")
 
 
-def connect_real(url: Optional[str] = None) -> "redis.Redis":
+def connect_real(url: str | None = None) -> "redis.Redis":
     """Open a real Redis connection (raises if unreachable)."""
     if not _REDIS_AVAILABLE:
         raise RuntimeError("redis-py not installed. Install with: pip install redis")

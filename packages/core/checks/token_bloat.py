@@ -1,12 +1,14 @@
 """Check token efficiency, content density, and HTML bloat for LLM agent ingestion."""
 
 import re
-from typing import Any, Dict, List
+from typing import Any
+
 from bs4 import BeautifulSoup, Comment
+
 from packages.core.schemas import ComponentStatus, ScoreComponent
 
 
-def clean_html_content(soup: BeautifulSoup) -> Dict[str, Any]:
+def clean_html_content(soup: BeautifulSoup) -> dict[str, Any]:
     """Extract clean readable text and compute noise metrics."""
     # Clone soup
     page = BeautifulSoup(str(soup), "html.parser")
@@ -56,7 +58,7 @@ def check_token_bloat(
     weight: float = 0.20,
 ) -> ScoreComponent:
     """Evaluate HTML token bloat and content density."""
-    recommendations: List[str] = []
+    recommendations: list[str] = []
     html_bytes = len(html.encode("utf-8")) if html else 0
 
     if html_bytes == 0:
@@ -80,7 +82,7 @@ def check_token_bloat(
     overhead_bytes = metrics["script_bytes"] + metrics["style_bytes"] + metrics["svg_bytes"]
     overhead_ratio = (overhead_bytes / max(1, html_bytes)) * 100.0
 
-    evidence: Dict[str, Any] = {
+    evidence: dict[str, Any] = {
         "html_size_bytes": html_bytes,
         "text_characters": text_length,
         "estimated_tokens": metrics["estimated_tokens"],
@@ -105,7 +107,9 @@ def check_token_bloat(
         score += 15.0 + ((content_ratio - 4.0) / 6.0) * 15.0
     else:
         score += max(0.0, (content_ratio / 4.0) * 15.0)
-        recommendations.append("High HTML bloat detected (<4% content density). Provide server-rendered markdown or cleaner DOM for AI agents.")
+        recommendations.append(
+            "High HTML bloat detected (<4% content density). Provide server-rendered markdown or cleaner DOM for AI agents."
+        )
 
     # 2. Script/Style Overhead (Max 30 pts)
     # < 50% overhead = 30 pts, 50-80% = 15-30 pts, > 80% = 0-15 pts
@@ -115,7 +119,9 @@ def check_token_bloat(
         score += 15.0 + ((75.0 - overhead_ratio) / 35.0) * 15.0
     else:
         score += max(0.0, ((100.0 - overhead_ratio) / 25.0) * 15.0)
-        recommendations.append("Excessive inline scripts, styles, or SVGs consuming agent token budget. Defer or externalize assets.")
+        recommendations.append(
+            "Excessive inline scripts, styles, or SVGs consuming agent token budget. Defer or externalize assets."
+        )
 
     # 3. Semantic Hierarchy (Max 30 pts)
     # H1 present (10 pts), Single H1 (5 pts), H2s present (5 pts), Semantic main/article (10 pts)
@@ -124,7 +130,9 @@ def check_token_bloat(
         if metrics["h1_count"] == 1:
             score += 5.0
         else:
-            recommendations.append(f"Found {metrics['h1_count']} `<h1>` elements. Use a single top-level `<h1>` for unambiguous topic extraction.")
+            recommendations.append(
+                f"Found {metrics['h1_count']} `<h1>` elements. Use a single top-level `<h1>` for unambiguous topic extraction."
+            )
     else:
         recommendations.append("Add a clear `<h1>` heading defining the main topic of the page.")
 
@@ -136,7 +144,9 @@ def check_token_bloat(
     if metrics["has_semantic_main"]:
         score += 10.0
     else:
-        recommendations.append("Wrap primary content in semantic `<main>` or `<article>` tags to help agents isolate relevant body text.")
+        recommendations.append(
+            "Wrap primary content in semantic `<main>` or `<article>` tags to help agents isolate relevant body text."
+        )
 
     score = min(100.0, max(0.0, score))
 
@@ -148,7 +158,7 @@ def check_token_bloat(
         details = f"Moderate content density ({round(content_ratio, 1)}% text vs {round(overhead_ratio, 1)}% scripts/styles)."
     else:
         status = ComponentStatus.FAIL
-        details = f"Severe DOM overhead. Heavy boilerplate dilutes content and inflates LLM token consumption."
+        details = "Severe DOM overhead. Heavy boilerplate dilutes content and inflates LLM token consumption."
 
     return ScoreComponent(
         name="token_bloat",

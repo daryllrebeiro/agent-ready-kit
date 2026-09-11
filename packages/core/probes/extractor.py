@@ -1,7 +1,7 @@
 """Citation extraction utilities for parsing LLM probe responses."""
 
 import re
-from typing import Any, Dict, List, Set
+from typing import Any
 from urllib.parse import urlparse
 
 
@@ -15,20 +15,19 @@ def extract_domain_from_url(url: str) -> str:
         # Strip port and www
         if ":" in netloc:
             netloc = netloc.split(":")[0]
-        if netloc.startswith("www."):
-            netloc = netloc[4:]
+        netloc = netloc.removeprefix("www.")
         return netloc
     except Exception:
         return ""
 
 
-def extract_citations(text: str) -> Dict[str, Any]:
+def extract_citations(text: str) -> dict[str, Any]:
     """Extract explicit URLs and cited domains from raw LLM text while keeping raw response intact."""
     if not text:
         return {"urls": [], "domains": []}
 
-    found_urls: List[str] = []
-    found_domains: Set[str] = set()
+    found_urls: list[str] = []
+    found_domains: set[str] = set()
 
     # 1. Full URLs: https://... or http://...
     raw_url_pattern = re.compile(r"https?://[^\s)\]\"'>,]+")
@@ -68,11 +67,10 @@ def extract_citations(text: str) -> Dict[str, Any]:
     )
     for match in domain_mention_pattern.finditer(text):
         domain = match.group(1).lower().strip()
-        if domain.startswith("www."):
-            domain = domain[4:]
+        domain = domain.removeprefix("www.")
         found_domains.add(domain)
 
     return {
         "urls": found_urls,
-        "domains": sorted(list(found_domains)),
+        "domains": sorted(found_domains),
     }

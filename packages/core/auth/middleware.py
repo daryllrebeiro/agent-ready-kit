@@ -22,6 +22,7 @@ class UserRole(str, Enum):
 @dataclass
 class AuthContext:
     """Security context derived from validated credentials."""
+
     tenant_id: str
     org_id: str
     user_id: str | None = None
@@ -44,9 +45,7 @@ class AuthContext:
         import urllib.parse
 
         def _host(value: str) -> str:
-            parsed = urllib.parse.urlparse(
-                value if "://" in value else f"https://{value}"
-            )
+            parsed = urllib.parse.urlparse(value if "://" in value else f"https://{value}")
             return (parsed.hostname or "").lower().rstrip(".")
 
         # Normalize both sides to hostnames: scoped tokens may be minted

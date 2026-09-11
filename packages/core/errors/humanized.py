@@ -6,7 +6,7 @@ user-friendly error states without raw stack traces.
 
 import time
 import uuid
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 
 class HumanizedError:
@@ -17,10 +17,10 @@ class HumanizedError:
         error_code: str,
         title: str,
         explanation: str,
-        remediation_steps: List[str],
-        action_url: Optional[str] = None,
-        action_label: Optional[str] = None,
-        support_code: Optional[str] = None,
+        remediation_steps: list[str],
+        action_url: str | None = None,
+        action_label: str | None = None,
+        support_code: str | None = None,
         status_code: int = 400,
     ):
         self.error_code = error_code
@@ -32,7 +32,7 @@ class HumanizedError:
         self.support_code = support_code or f"ERR-{uuid.uuid4().hex[:8].upper()}"
         self.status_code = status_code
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "error_code": self.error_code,
             "title": self.title,
@@ -93,7 +93,7 @@ class HumanizedError:
         )
 
     @classmethod
-    def from_unauthorized(cls, tenant_id: Optional[str] = None) -> "HumanizedError":
+    def from_unauthorized(cls, tenant_id: str | None = None) -> "HumanizedError":
         return cls(
             error_code="UNAUTHORIZED_ACCESS",
             title="Authentication Required",

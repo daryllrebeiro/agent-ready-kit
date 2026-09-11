@@ -1,11 +1,11 @@
 """Phase 12 Edge & MCP Tests: Network Timeouts, 30-Day Shadow Analytics, and OS Command Defenses."""
 
 import time
-import pytest
-from packages.edge_proxy.simulator import EdgeProxySimulator
-from packages.mcp.server import MCPServer
-from packages.mcp.security import detect_prompt_injection, sanitize_mcp_content
+
 from packages.core.auth.middleware import AuthManager
+from packages.edge_proxy.simulator import EdgeProxySimulator
+from packages.mcp.security import detect_prompt_injection, sanitize_mcp_content
+from packages.mcp.server import MCPServer
 
 
 def test_edge_proxy_network_timeout_fail_open_benchmark():
@@ -17,7 +17,9 @@ def test_edge_proxy_network_timeout_fail_open_benchmark():
         raise TimeoutError("Upstream origin gateway timed out (504)")
 
     start_t = time.time()
-    res = proxy.handle_request("https://customer.com/docs", {"User-Agent": "GPTBot/1.0"}, origin_fetch=slow_origin)
+    res = proxy.handle_request(
+        "https://customer.com/docs", {"User-Agent": "GPTBot/1.0"}, origin_fetch=slow_origin
+    )
     elapsed_ms = (time.time() - start_t) * 1000.0
 
     assert res["status"] in [502, 504]
@@ -32,7 +34,9 @@ def test_edge_proxy_30_day_shadow_analytics():
     # Record 30 simulated crawler requests
     for i in range(30):
         agent = "ClaudeBot/1.0" if i % 2 == 0 else "PerplexityBot/1.0"
-        res = proxy.handle_request(f"https://customer.com/page-{i}", {"User-Agent": agent}, origin_fetch=origin)
+        res = proxy.handle_request(
+            f"https://customer.com/page-{i}", {"User-Agent": agent}, origin_fetch=origin
+        )
         assert res["headers"].get("X-AgentReady-Shadow") == "true"
 
     assert len(proxy.shadow_logs) == 30
@@ -56,7 +60,7 @@ def test_mcp_os_command_execution_adversarial_containment():
         sanitized = sanitize_mcp_content(payload)
         assert "<system>" not in sanitized
         # 2. Check detection
-        has_injection, matches = detect_prompt_injection(payload)
+        _has_injection, _matches = detect_prompt_injection(payload)
         # Even if not a standard prompt jailbreak pattern, tool execution must be purely functional and read-only
 
 
@@ -69,20 +73,24 @@ def test_mcp_server_sse_burst_rate_limiting():
 
     # 60 requests should succeed
     for _ in range(60):
-        res = server.handle_request({
-            "jsonrpc": "2.0",
-            "id": 1,
-            "method": "tools/list",
-            "params": {"api_key": raw_key},
-        })
+        res = server.handle_request(
+            {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "tools/list",
+                "params": {"api_key": raw_key},
+            }
+        )
         assert "result" in res
 
     # 61st request in the same minute must return -32002 Rate Limit Exceeded
-    rate_limited_res = server.handle_request({
-        "jsonrpc": "2.0",
-        "id": 2,
-        "method": "tools/list",
-        "params": {"api_key": raw_key},
-    })
+    rate_limited_res = server.handle_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 2,
+            "method": "tools/list",
+            "params": {"api_key": raw_key},
+        }
+    )
     assert "error" in rate_limited_res
     assert rate_limited_res["error"]["code"] == -32002

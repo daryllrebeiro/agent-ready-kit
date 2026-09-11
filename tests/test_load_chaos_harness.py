@@ -1,11 +1,9 @@
 """Multi-Tenant Concurrency and Chaos Spike Load Test Harness."""
 
 import concurrent.futures
-import time
-import pytest
+
 from packages.core.pipeline.budget_enforcer import (
     BudgetEnforcer,
-    BudgetExceededError,
     GlobalSpendCircuitBreakerTripped,
 )
 from packages.core.probes.redis_cache import DistributedProbeCache, MockRedisClient

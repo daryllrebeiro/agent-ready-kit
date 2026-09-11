@@ -1,6 +1,5 @@
 """Phase 12 Observability Tests: OpenTelemetry OTLP Exporter and Kubernetes /readyz Eviction."""
 
-import pytest
 from packages.core.observability.apm import OpenTelemetryTraceExporterBridge
 from packages.core.observability.health import HealthChecker
 from packages.core.probes.redis_cache import DistributedProbeCache, MockRedisClient

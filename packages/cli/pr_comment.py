@@ -5,7 +5,9 @@ from packages.core.schemas import Score
 
 def format_pr_comment(score: Score, min_score: float | None = None) -> str:
     """Render a GitHub Flavored Markdown comment for PR CI runs."""
-    status_icon = "[PASS]" if score.overall_score >= 80 else "[WARN]" if score.overall_score >= 50 else "[FAIL]"
+    status_icon = (
+        "[PASS]" if score.overall_score >= 80 else "[WARN]" if score.overall_score >= 50 else "[FAIL]"
+    )
     ci_status = ""
     if min_score is not None:
         if score.overall_score >= min_score:
@@ -29,23 +31,29 @@ def format_pr_comment(score: Score, min_score: float | None = None) -> str:
 
     for comp in score.components:
         badge = "PASS" if comp.status.value == "PASS" else "WARN" if comp.status.value == "WARN" else "FAIL"
-        lines.append(f"| `{badge}` | **{comp.display_name}** | `{comp.score:.1f}` | {int(comp.weight * 100)}% | {comp.details} |")
+        lines.append(
+            f"| `{badge}` | **{comp.display_name}** | `{comp.score:.1f}` | {int(comp.weight * 100)}% | {comp.details} |"
+        )
 
     if score.recommendations:
-        lines.extend([
-            "",
-            "<details>",
-            "<summary><strong>[+] Actionable Remediation Checklist</strong> (click to expand)</summary>",
-            "",
-        ])
+        lines.extend(
+            [
+                "",
+                "<details>",
+                "<summary><strong>[+] Actionable Remediation Checklist</strong> (click to expand)</summary>",
+                "",
+            ]
+        )
         for idx, rec in enumerate(score.recommendations, 1):
             lines.append(f"{idx}. {rec}")
         lines.append("\n</details>")
 
-    lines.extend([
-        "",
-        "---",
-        "*Report generated automatically by [AgentReady](https://github.com/daryllrebeiro/agent-ready-kit)*",
-    ])
+    lines.extend(
+        [
+            "",
+            "---",
+            "*Report generated automatically by [AgentReady](https://github.com/daryllrebeiro/agent-ready-kit)*",
+        ]
+    )
 
     return "\n".join(lines)

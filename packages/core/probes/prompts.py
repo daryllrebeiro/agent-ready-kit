@@ -1,8 +1,6 @@
 """Curated probe prompt collection for testing LLM citation and agent discovery."""
 
-from typing import Dict, List
-
-STANDARD_PROBE_PROMPTS: List[Dict[str, str]] = [
+STANDARD_PROBE_PROMPTS: list[dict[str, str]] = [
     {
         "id": "dev_tools_1",
         "vertical": "Developer Tools",

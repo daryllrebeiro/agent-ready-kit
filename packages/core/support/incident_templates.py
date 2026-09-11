@@ -4,14 +4,12 @@ Provides pre-composed markdown & HTML advisory templates for operational inciden
 fail-open status updates, and quota alerts.
 """
 
-from typing import Any, Dict
-
 
 class IncidentTemplateCatalog:
     """Pre-drafted operational advisory templates for on-call & customer support."""
 
     @staticmethod
-    def edge_proxy_failopen_advisory(domain_url: str, duration_minutes: int = 5) -> Dict[str, str]:
+    def edge_proxy_failopen_advisory(domain_url: str, duration_minutes: int = 5) -> dict[str, str]:
         return {
             "incident_type": "EDGE_PROXY_FAIL_OPEN",
             "subject": f"[Advisory] Temporary Edge Proxy Bypass Activated for {domain_url}",
@@ -30,7 +28,7 @@ class IncidentTemplateCatalog:
         }
 
     @staticmethod
-    def upstream_provider_degradation_advisory(provider: str) -> Dict[str, str]:
+    def upstream_provider_degradation_advisory(provider: str) -> dict[str, str]:
         return {
             "incident_type": "UPSTREAM_PROVIDER_DEGRADATION",
             "subject": f"[Advisory] Upstream {provider.title()} Latency Elevated",

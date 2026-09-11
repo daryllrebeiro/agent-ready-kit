@@ -1,8 +1,7 @@
 """Live Stripe Webhook Replay, Lifecycle Transitions, and Out-of-Order Delivery Tests."""
 
 import json
-import time
-import pytest
+
 from packages.core.billing.stripe_engine import StripeBillingEngine
 
 
@@ -112,7 +111,7 @@ def test_stripe_duplicate_event_redelivery_idempotency():
     }
 
     # Initial delivery
-    ok_1, msg_1 = billing.handle_webhook_event(json.dumps(event_payload))
+    ok_1, _msg_1 = billing.handle_webhook_event(json.dumps(event_payload))
     assert ok_1 is True
 
     # Replay identical event (Stripe retry behavior on network timeout)

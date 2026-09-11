@@ -11,7 +11,6 @@ from http.server import HTTPServer
 
 import pytest
 
-import apps.web.server as web_server
 from apps.web.server import DashboardAPIHandler
 from packages.core.auth.middleware import AuthContext, UserRole
 
@@ -27,9 +26,7 @@ def _run_server():
 
 class TestDomainScoping:
     def test_suffix_collision_rejected(self):
-        ctx = AuthContext(
-            tenant_id="t", org_id="t", role=UserRole.READ_ONLY, scoped_domain="example.com"
-        )
+        ctx = AuthContext(tenant_id="t", org_id="t", role=UserRole.READ_ONLY, scoped_domain="example.com")
         assert ctx.can_access_domain("https://example.com/x") is True
         assert ctx.can_access_domain("https://sub.example.com/x") is True
         assert ctx.can_access_domain("https://attacker-example.com/") is False
@@ -73,7 +70,6 @@ class TestTenantStoreDefault:
         assert got is not None and got.url == "https://example.com"
 
     def test_dlq_escalation_without_url_returns_false(self):
-        import os
 
         from packages.core.integrations.notifications import dispatch_dlq_escalation
         from packages.core.pipeline.dlq import FailedJob
@@ -81,8 +77,12 @@ class TestTenantStoreDefault:
         os.environ.pop("SLACK_WEBHOOK_URL", None)
         os.environ.pop("DISCORD_WEBHOOK_URL", None)
         job = FailedJob(
-            id="j1", org_id="o", provider="openai", target_url="https://x.example",
-            prompt="p", error_message="boom",
+            id="j1",
+            org_id="o",
+            provider="openai",
+            target_url="https://x.example",
+            prompt="p",
+            error_message="boom",
         )
         assert dispatch_dlq_escalation(job) is False
 
@@ -125,8 +125,13 @@ class TestStripeWebhookEndpoint:
         event = {
             "id": "evt_fix_1",
             "type": "customer.subscription.created",
-            "data": {"object": {"id": "sub_1", "customer": "cus_1",
-                                "metadata": {"tenant_id": "tenant_hook", "tier": "growth"}}},
+            "data": {
+                "object": {
+                    "id": "sub_1",
+                    "customer": "cus_1",
+                    "metadata": {"tenant_id": "tenant_hook", "tier": "growth"},
+                }
+            },
         }
         raw = json.dumps(event)
         sig = hmac.new(secret.encode(), f"1750000000.{raw}".encode(), hashlib.sha256).hexdigest()
@@ -143,8 +148,8 @@ class TestStripeWebhookEndpoint:
 @pytest.mark.integration
 class TestPersistentKeysRealPG:
     def test_generate_resolve_revoke_survives(self):
-        from packages.core.storage.pg_connection import connect_real
         from packages.core.auth.pg_keys import PgAuthManager
+        from packages.core.storage.pg_connection import connect_real
 
         mgr = PgAuthManager(connect_real())
         raw = mgr.generate_api_key("tenant_pg_keys")
@@ -161,8 +166,8 @@ class TestPersistentKeysRealPG:
         assert PgAuthManager(connect_real()).resolve_api_key(raw) is None
 
     def test_expired_key_rejected(self):
-        from packages.core.storage.pg_connection import connect_real
         from packages.core.auth.pg_keys import PgAuthManager
+        from packages.core.storage.pg_connection import connect_real
 
         mgr = PgAuthManager(connect_real())
         raw = mgr.generate_api_key("tenant_pg_exp")

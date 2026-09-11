@@ -8,7 +8,10 @@ real-PG RLS isolation is proven by test_phase16_pg_isolation_proof.py.
 
 import pytest
 
-@pytest.mark.skip(reason="Persistent transaction state issue in this environment; core logic proven by unit tests")
+
+@pytest.mark.skip(
+    reason="Persistent transaction state issue in this environment; core logic proven by unit tests"
+)
 @pytest.mark.integration
 def test_migration_checksum_on_real_postgres():
     pass

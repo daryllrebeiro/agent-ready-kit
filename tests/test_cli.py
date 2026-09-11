@@ -3,6 +3,7 @@
 import json
 import os
 from unittest.mock import patch
+
 from packages.cli.main import cli_entrypoint
 from packages.core.schemas import ComponentStatus, Score, ScoreComponent
 
@@ -91,13 +92,19 @@ def test_cli_scan_json_output_file(mock_score_url, tmp_path):
 
 def test_cli_generate(tmp_path):
     out_dir = str(tmp_path / "gen_output")
-    exit_code = cli_entrypoint([
-        "generate",
-        "--url", "https://myproduct.com",
-        "--name", "MyProduct",
-        "--description", "AI-powered developer platform.",
-        "--output-dir", out_dir,
-    ])
+    exit_code = cli_entrypoint(
+        [
+            "generate",
+            "--url",
+            "https://myproduct.com",
+            "--name",
+            "MyProduct",
+            "--description",
+            "AI-powered developer platform.",
+            "--output-dir",
+            out_dir,
+        ]
+    )
 
     assert exit_code == 0
     llms_file = os.path.join(out_dir, "llms.txt")

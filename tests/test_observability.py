@@ -2,12 +2,11 @@
 
 import json
 import logging
-from unittest.mock import MagicMock
+
 from packages.core.observability.health import HealthChecker
 from packages.core.observability.logger import (
     StructuredJsonFormatter,
     TraceContext,
-    get_structured_logger,
 )
 from packages.core.pipeline.dlq import DeadLetterQueue, FailedJob
 

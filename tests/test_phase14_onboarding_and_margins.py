@@ -1,9 +1,8 @@
 """Phase 14 Onboarding Wizard, Incident Templates, and Gross Margin Tests."""
 
-import pytest
+from packages.core.billing.margins import GrossMarginGuardrail
 from packages.core.onboarding.wizard import OnboardingWizard
 from packages.core.support.incident_templates import IncidentTemplateCatalog
-from packages.core.billing.margins import GrossMarginGuardrail
 
 
 def test_rapid_onboarding_wizard_flow():
@@ -21,7 +20,24 @@ def test_rapid_onboarding_wizard_flow():
     assert result["steps"][0]["name"] == "Site Readiness Assessment"
     assert result["steps"][1]["name"] == "Persona Simulation (3 Archetypes)"
     assert result["steps"][2]["name"] == "Competitive Benchmark & Badge Issuance"
+    assert result["steps"][2]["status"] == "COMPLETED"
+    assert "win_status" in result["steps"][2]  # real engine ran, not fabricated
     assert result["elapsed_seconds"] < 600.0  # Must be well under 10 minutes
+
+
+def test_onboarding_without_competitors_is_honest_baseline():
+    """Phase 17 regression: step 3 used to fabricate a comparison with zero
+    competitors. Now it records COMPLETED_NO_COMPARISON."""
+    from packages.core.onboarding.wizard import OnboardingWizard
+
+    wizard = OnboardingWizard()
+    result = wizard.execute_onboarding_flow(
+        tenant_id="tenant_solo",
+        target_domain="https://example.com",
+    )
+    assert result["steps"][2]["status"] == "COMPLETED_NO_COMPARISON"
+    assert result["steps"][2]["competitors_compared"] == 0
+    assert "win_status" not in result["steps"][2]
 
 
 def test_incident_communication_templates():
@@ -39,9 +55,13 @@ def test_incident_communication_templates():
 def test_unit_economics_gross_margin_guardrails():
     """Verifies that Growth and Enterprise tiers achieve >= 70% gross margins at full utilization."""
     growth_margin = GrossMarginGuardrail.calculate_plan_gross_margin("growth")
-    assert growth_margin["gross_margin_pct"] >= 70.0, f"Expected Growth margin >= 70%, got {growth_margin['gross_margin_pct']}%"
+    assert growth_margin["gross_margin_pct"] >= 70.0, (
+        f"Expected Growth margin >= 70%, got {growth_margin['gross_margin_pct']}%"
+    )
     assert growth_margin["target_margin_met"] is True
 
     ent_margin = GrossMarginGuardrail.calculate_plan_gross_margin("enterprise")
-    assert ent_margin["gross_margin_pct"] >= 70.0, f"Expected Enterprise margin >= 70%, got {ent_margin['gross_margin_pct']}%"
+    assert ent_margin["gross_margin_pct"] >= 70.0, (
+        f"Expected Enterprise margin >= 70%, got {ent_margin['gross_margin_pct']}%"
+    )
     assert ent_margin["target_margin_met"] is True

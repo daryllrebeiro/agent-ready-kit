@@ -6,7 +6,9 @@ import threading
 import time
 from http.client import HTTPConnection
 from http.server import HTTPServer
+
 import pytest
+
 import apps.web.server as web_server
 from apps.web.server import DashboardAPIHandler
 from packages.core.auth.middleware import AuthManager, UserRole
@@ -25,7 +27,10 @@ def api_fuzz_server():
     server.server_close()
 
 
-@pytest.mark.skipif(platform.system() == "Windows", reason="Windows socket flakiness with rapid sequential requests; auth proven by other tests")
+@pytest.mark.skipif(
+    platform.system() == "Windows",
+    reason="Windows socket flakiness with rapid sequential requests; auth proven by other tests",
+)
 def test_api_route_unauthenticated_fuzzing(api_fuzz_server):
     """Phase 16 Task 1: every tenant-data route must reject unauthenticated
     callers with exactly 401 — a 200 here is a live data-exposure failure.
@@ -77,7 +82,6 @@ def test_api_route_unauthenticated_fuzzing(api_fuzz_server):
 def test_api_route_authenticated_allows_access(api_fuzz_server):
     """A request bearing a key minted via /api/auth/register reaches the
     handler (i.e. auth gates, it does not blanket-reject)."""
-    import apps.web.server as web_server
 
     raw_key = web_server.AUTH_MANAGER.generate_api_key(tenant_id="tenant_fuzz_ok")
     conn = HTTPConnection("127.0.0.1", api_fuzz_server)
