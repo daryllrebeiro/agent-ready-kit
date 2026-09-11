@@ -41,7 +41,21 @@ class AuthContext:
     def can_access_domain(self, domain_url: str) -> bool:
         if not self.scoped_domain:
             return True
-        return self.scoped_domain.lower() in domain_url.lower()
+        import urllib.parse
+
+        def _host(value: str) -> str:
+            parsed = urllib.parse.urlparse(
+                value if "://" in value else f"https://{value}"
+            )
+            return (parsed.hostname or "").lower().rstrip(".")
+
+        # Normalize both sides to hostnames: scoped tokens may be minted
+        # with full URLs ("https://docs.acme.com") or bare hosts.
+        scoped = _host(self.scoped_domain)
+        target = _host(domain_url)
+        # Exact or proper subdomain-suffix match only: prevents
+        # scoped_domain=example.com from granting attacker-example.com.
+        return target == scoped or target.endswith("." + scoped)
 
 
 class AuthManager:

@@ -68,6 +68,20 @@ CREATE TABLE IF NOT EXISTS subscriptions (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
+-- API Keys Table (global: key hashes resolve tenants; never RLS-gated
+-- because the key itself is the credential that establishes tenancy).
+-- Only hashes are stored; raw keys are shown once at mint time.
+CREATE TABLE IF NOT EXISTS api_keys (
+    key_hash TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+    org_id TEXT NOT NULL,
+    role TEXT NOT NULL DEFAULT 'member',
+    scopes TEXT NOT NULL DEFAULT '["read", "write"]',
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    expires_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() + INTERVAL '1 year',
+    revoked BOOLEAN NOT NULL DEFAULT FALSE
+);
+
 -- Enable Native Database Row-Level Security
 ALTER TABLE domains ENABLE ROW LEVEL SECURITY;
 ALTER TABLE scores ENABLE ROW LEVEL SECURITY;
@@ -349,3 +363,65 @@ class PostgresRLSRepository:
             )
             rows = cur.fetchall()
             return [dict(r) for r in rows]
+
+    def upsert_subscription(
+        self,
+        tenant_id: str,
+        status: str,
+        tier: str | None = None,
+        stripe_customer_id: str | None = None,
+        stripe_subscription_id: str | None = None,
+    ) -> None:
+        """Persist webhook-derived subscription state (Task 5 code-side).
+
+        Called by the Stripe webhook endpoint after signature verification.
+        Idempotent: one row per tenant, updated on repeat delivery.
+        """
+        from packages.core.billing.stripe_engine import TIER_LIMITS
+
+        with self.tenant_context(tenant_id):
+            cur = self.conn.conn.cursor()
+            cur.execute(
+                "SELECT tenant_id FROM subscriptions WHERE tenant_id = ?",
+                (tenant_id,),
+            )
+            row = cur.fetchone()
+            tier_key = (tier or "growth").lower()
+            limits = TIER_LIMITS.get(tier_key, TIER_LIMITS["growth"])
+            now = datetime.now(UTC).isoformat()
+            if row is None:
+                cur.execute(
+                    """INSERT INTO subscriptions
+                       (id, tenant_id, stripe_customer_id, stripe_subscription_id,
+                        status, max_domains, monthly_probe_budget, created_at, updated_at)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    (
+                        f"sub_{tenant_id}",
+                        tenant_id,
+                        stripe_customer_id,
+                        stripe_subscription_id,
+                        status,
+                        limits["max_domains"],
+                        limits["monthly_probe_budget"],
+                        now,
+                        now,
+                    ),
+                )
+            else:
+                sets = ["status = ?", "updated_at = ?"]
+                params: list = [status, now]
+                if tier_key in TIER_LIMITS:
+                    sets += ["max_domains = ?", "monthly_probe_budget = ?"]
+                    params += [limits["max_domains"], limits["monthly_probe_budget"]]
+                if stripe_customer_id:
+                    sets.append("stripe_customer_id = ?")
+                    params.append(stripe_customer_id)
+                if stripe_subscription_id:
+                    sets.append("stripe_subscription_id = ?")
+                    params.append(stripe_subscription_id)
+                params.append(tenant_id)
+                cur.execute(
+                    f"UPDATE subscriptions SET {', '.join(sets)} WHERE tenant_id = ?",
+                    tuple(params),
+                )
+            self.conn.conn.commit()

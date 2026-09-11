@@ -22,11 +22,26 @@ from packages.core.pipeline.budget_enforcer import BudgetExceededError
 
 WEB_DIR = os.path.dirname(os.path.abspath(__file__))
 
-# Phase 16 Task 1: single-process AuthManager instance backing the live
-# request path. LIMITATION (explicit, not a mock): keys live in process
-# memory — a server restart invalidates them. Persistent hashed-key storage
-# lands with the Postgres cutover (Task 3 follow-up).
-AUTH_MANAGER = AuthManager()
+# Phase 16 Task 1 (+ follow-up): AuthManager backing the live request path.
+# AGENTREADY_STORAGE=postgres -> persistent hashed keys in Postgres
+# (survive restarts, revocation/expiry enforced). Default -> in-process
+# AuthManager (keys lost on restart; explicit dev limitation, not a mock).
+def _build_auth_manager():
+    if os.environ.get("AGENTREADY_STORAGE", "sqlite").lower() == "postgres":
+        try:
+            from packages.core.auth.pg_keys import PgAuthManager
+            from packages.core.storage.pg_connection import connect_real
+
+            mgr = PgAuthManager(connect_real())
+            print("[auth] persistent Postgres-backed API keys enabled")
+            return mgr
+        except Exception as e:
+            print(f"[auth] WARNING: AGENTREADY_STORAGE=postgres but PG unreachable ({e}); "
+                  "falling back to in-process keys")
+    return AuthManager()
+
+
+AUTH_MANAGER = _build_auth_manager()
 
 # Phase 16 Task 4: single-process real Redis-backed cache (budget counters +
 # dedup). LIMITATION: process-local until a multi-process deployment; real
@@ -87,6 +102,8 @@ class DashboardAPIHandler(SimpleHTTPRequestHandler):
 
         if path == "/api/auth/register":
             self.handle_post_auth_register()
+        elif path == "/api/webhooks/stripe":
+            self.handle_post_stripe_webhook()
         elif path == "/api/scan":
             self.handle_post_scan()
         elif path == "/api/probe":
@@ -138,32 +155,120 @@ class DashboardAPIHandler(SimpleHTTPRequestHandler):
             return
         self.send_json_response({"tenant_id": tenant_id, "api_key": raw_key}, status=201)
 
-    def handle_get_domains(self):
-        if self.require_auth() is None:
+    def handle_post_stripe_webhook(self):
+        """Phase 16 Task 5 code-side: real Stripe webhook receiver.
+
+        Verifies the Stripe HMAC signature over the RAW body, processes the
+        event idempotently through StripeBillingEngine, and persists the
+        subscription snapshot to Postgres when AGENTREADY_STORAGE=postgres.
+        Live Stripe delivery still requires a test-mode account + CLI;
+        this endpoint is the real receiver it will hit (no mocks).
+        """
+        import logging
+
+        from packages.core.billing.stripe_engine import StripeBillingEngine
+
+        logger = logging.getLogger("agentready.web")
+        length = int(self.headers.get("Content-Length", 0))
+        raw = self.rfile.read(length).decode("utf-8")
+        signature = self.headers.get("Stripe-Signature", "")
+
+        secret = os.environ.get("STRIPE_WEBHOOK_SECRET", "")
+        if not secret or secret == "whsec_test_secret":
+            # Fail fast: never validate traffic against the hardcoded test
+            # secret (AR-008). Operators must set STRIPE_WEBHOOK_SECRET.
+            self.send_json_response(
+                {"error": "webhook not configured", "error_code": "WEBHOOK_UNCONFIGURED"},
+                status=503,
+            )
             return
-        repo = StorageRepository()
-        domains = repo.list_domains()
+
+        engine = StripeBillingEngine(webhook_secret=secret)
+        if not engine.verify_webhook_signature(raw, signature):
+            logger.warning("stripe webhook rejected: bad signature")
+            self.send_json_response(
+                {"error": "invalid signature", "error_code": "WEBHOOK_BAD_SIGNATURE"},
+                status=401,
+            )
+            return
+
+        ok, message = engine.handle_webhook_event(raw, signature)
+        if not ok:
+            self.send_json_response({"error": "event rejected"}, status=400)
+            return
+
+        # Persist subscription snapshot (postgres mode only; SQLite has no
+        # subscriptions table by design for local dev).
+        try:
+            import json as _json
+
+            event = _json.loads(raw)
+            data_obj = event.get("data", {}).get("object", {})
+            tenant_id = (
+                data_obj.get("metadata", {}).get("tenant_id")
+                or data_obj.get("customer")
+                or "org_unknown"
+            )
+            event_type = event.get("type", "")
+            sub = engine.get_subscription(tenant_id) or {}
+            from packages.core.storage.tenant_store import get_pg_repo, storage_mode
+
+            if storage_mode() == "postgres":
+                pg = get_pg_repo()
+                if pg is not None:
+                    status = sub.get("status", "active")
+                    if event_type == "customer.subscription.deleted":
+                        status = "canceled"
+                    elif event_type == "invoice.payment_failed":
+                        status = "past_due"
+                    pg.upsert_subscription(
+                        tenant_id,
+                        status=status,
+                        tier=sub.get("tier"),
+                        stripe_customer_id=data_obj.get("customer"),
+                        stripe_subscription_id=data_obj.get("id"),
+                    )
+            # Log event id/type only — never customer PII or raw payload.
+            logger.info(f"stripe webhook {event.get('id')} {event_type} -> {message}")
+        except Exception:
+            logger.exception("stripe webhook persistence failed")
+        self.send_json_response({"received": True, "message": message})
+
+    def handle_get_domains(self):
+        auth_ctx = self.require_auth()
+        if auth_ctx is None:
+            return
+        from packages.core.storage.tenant_store import TenantStore
+
+        store = TenantStore(auth_ctx.tenant_id)
+        domains = store.list_domains()
         self.send_json_response(domains)
 
     def handle_get_score(self, domain_url: str):
-        if self.require_auth() is None:
+        auth_ctx = self.require_auth()
+        if auth_ctx is None:
             return
-        repo = StorageRepository()
+        from packages.core.storage.tenant_store import TenantStore
+
+        store = TenantStore(auth_ctx.tenant_id)
         if not domain_url:
             self.send_json_response({"error": "domain parameter required"}, status=400)
             return
 
-        score = repo.get_latest_score(domain_url)
+        score = store.get_latest_score(domain_url)
         if score:
             self.send_json_response(score.model_dump())
         else:
             self.send_json_response({"error": "no score found"}, status=404)
 
     def handle_get_probes(self, domain_url: str):
-        if self.require_auth() is None:
+        auth_ctx = self.require_auth()
+        if auth_ctx is None:
             return
-        repo = StorageRepository()
-        probes = repo.get_probe_history(domain_url if domain_url else None)
+        from packages.core.storage.tenant_store import TenantStore
+
+        store = TenantStore(auth_ctx.tenant_id)
+        probes = store.get_probe_history(domain_url if domain_url else None)
         self.send_json_response(probes)
 
     def handle_get_badge(self, domain_url: str, label: str = "agent-ready"):
@@ -238,8 +343,12 @@ class DashboardAPIHandler(SimpleHTTPRequestHandler):
         self.wfile.write(html.encode("utf-8"))
 
     def handle_post_scan(self):
-        if self.require_auth() is None:
+        auth_ctx = self.require_auth()
+        if auth_ctx is None:
             return
+        from packages.core.storage.tenant_store import TenantStore
+
+        store = TenantStore(auth_ctx.tenant_id)
         length = int(self.headers.get("Content-Length", 0))
         body = self.rfile.read(length).decode("utf-8")
         try:
@@ -261,8 +370,7 @@ class DashboardAPIHandler(SimpleHTTPRequestHandler):
             ):
                 self.send_json_response({"error": "unsafe scan target rejected"}, status=400)
                 return
-            repo = StorageRepository()
-            repo.save_score(url, score)
+            store.save_score(url, score)
 
             self.send_json_response(score.model_dump())
         except Exception:
@@ -271,10 +379,12 @@ class DashboardAPIHandler(SimpleHTTPRequestHandler):
     def handle_post_probe(self):
         from packages.core.errors.humanized import HumanizedError
         from packages.core.pipeline.budget_enforcer import BudgetExceededError
+        from packages.core.storage.tenant_store import TenantStore
 
         auth_ctx = self.require_auth()
         if auth_ctx is None:
             return
+        store = TenantStore(auth_ctx.tenant_id)
         length = int(self.headers.get("Content-Length", 0))
         body = self.rfile.read(length).decode("utf-8")
         try:
@@ -303,11 +413,10 @@ class DashboardAPIHandler(SimpleHTTPRequestHandler):
                 dry_run=dry_run,
             )
 
-            repo = StorageRepository()
             saved_count = 0
             for prompt_run in suite_results:
                 for probe_res in prompt_run["results"]:
-                    repo.save_probe_run(url, probe_res)
+                    store.save_probe_run(url, probe_res)
                     saved_count += 1
 
             self.send_json_response(
@@ -321,10 +430,16 @@ class DashboardAPIHandler(SimpleHTTPRequestHandler):
             herr = HumanizedError.from_budget_exceeded(be.tenant_id, be.limit, be.current)
             self.send_json_response(herr.to_dict(), status=herr.status_code)
         except Exception as e:
-            import traceback
-            print(f"[DEBUG] probe handler error: {e}")
-            traceback.print_exc()
-            self.send_json_response({"error": "probe failed"}, status=500)
+            import logging
+
+            # Structured server-side log only; clients get a generic
+            # envelope (no stack traces, paths, or internals leak).
+            logging.getLogger("agentready.web").exception(
+                "probe handler failed for tenant=%s", auth_ctx.tenant_id
+            )
+            self.send_json_response(
+                {"error": "probe failed", "error_code": "PROBE_FAILED"}, status=500
+            )
 
     def handle_get_healthz(self):
         from packages.core.observability.health import HealthChecker
@@ -410,12 +525,18 @@ class DashboardAPIHandler(SimpleHTTPRequestHandler):
         self.send_response(status)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(body)))
-        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("Permissions-Policy", "geolocation=(), microphone=(), camera=()")
+        # HSTS is intentionally omitted: this server is localhost-only HTTP.
+        # TLS termination (and HSTS) belongs at the reverse proxy / LB.
+        # X-Content-Type-Options / X-Frame-Options / Referrer-Policy are set
+        # once in end_headers() for every response (no duplicates).
         self.end_headers()
         self.wfile.write(body)
 
     def end_headers(self):
         self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("X-Frame-Options", "DENY")
+        self.send_header("Referrer-Policy", "no-referrer")
         super().end_headers()
 
 
