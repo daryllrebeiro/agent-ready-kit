@@ -107,6 +107,9 @@ class MCPServer:
 
     def handle_request(self, request: dict[str, Any]) -> dict[str, Any]:
         """Process an MCP JSON-RPC 2.0 request."""
+        from packages.core.observability.logger import TraceContext, get_structured_logger
+
+        logger = get_structured_logger("agentready.mcp")
         req_id = request.get("id")
         method = request.get("method")
         params = request.get("params", {})
@@ -114,6 +117,7 @@ class MCPServer:
         # Authentication verification
         auth_ctx = self._extract_auth(params)
         if self.auth_required and not auth_ctx:
+            logger.warning(f"mcp rejected unauthenticated method={method}")
             return {
                 "jsonrpc": "2.0",
                 "id": req_id,
@@ -121,6 +125,14 @@ class MCPServer:
             }
 
         tenant_id = auth_ctx.tenant_id if auth_ctx else "anonymous"
+        with TraceContext(tenant_id=tenant_id):
+            logger.info(f"mcp method={method} tenant={tenant_id}")
+            return self._handle_request_inner(req_id, method, params, auth_ctx, tenant_id)
+
+    def _handle_request_inner(
+        self, req_id: Any, method: Any, params: dict[str, Any], auth_ctx: Any, tenant_id: str
+    ) -> dict[str, Any]:
+        """Authenticated, trace-scoped request dispatch (split for testability)."""
 
         # Rate Limiting
         if self.rate_limiter.is_rate_limited(tenant_id):
@@ -170,11 +182,32 @@ class MCPServer:
                         "id": req_id,
                         "result": {
                             "isError": True,
-                            "content": [{"type": "text", "text": f"[Security Violation]: Suspicious prompt injection pattern in '{arg_k}': {matches}"}],
+                            "content": [
+                                {
+                                    "type": "text",
+                                    "text": f"[Security Violation]: Suspicious prompt injection pattern in '{arg_k}': {matches}",
+                                }
+                            ],
                         },
                     }
 
         url = args.get("url", "")
+
+        # P0.1 defense in depth: reject unsafe scan targets at the MCP
+        # boundary before the scorer fetches anything (the scorer also
+        # guards internally via resolve_and_validate).
+        if url and name in ("get_site_readiness", "get_llms_txt", "check_bot_permission"):
+            try:
+                self.scorer.resolve_and_validate(url)
+            except Exception as e:
+                return {
+                    "jsonrpc": "2.0",
+                    "id": req_id,
+                    "result": {
+                        "isError": True,
+                        "content": [{"type": "text", "text": f"[Unsafe Target]: {e}"}],
+                    },
+                }
 
         if name == "get_site_readiness":
             try:
@@ -208,7 +241,10 @@ class MCPServer:
                 return {
                     "jsonrpc": "2.0",
                     "id": req_id,
-                    "result": {"isError": True, "content": [{"type": "text", "text": f"Error scoring URL: {e!s}"}]},
+                    "result": {
+                        "isError": True,
+                        "content": [{"type": "text", "text": f"Error scoring URL: {e!s}"}],
+                    },
                 }
 
         elif name == "get_llms_txt":
@@ -248,7 +284,14 @@ class MCPServer:
                 return {
                     "jsonrpc": "2.0",
                     "id": req_id,
-                    "result": {"content": [{"type": "text", "text": f"No robots.txt found. {bot_name} is ALLOWED by default."}]},
+                    "result": {
+                        "content": [
+                            {
+                                "type": "text",
+                                "text": f"No robots.txt found. {bot_name} is ALLOWED by default.",
+                            }
+                        ]
+                    },
                 }
 
         return {
@@ -271,7 +314,11 @@ def run_stdio_server():
             sys.stdout.write(json.dumps(resp) + "\n")
             sys.stdout.flush()
         except Exception as e:
-            err_resp = {"jsonrpc": "2.0", "id": None, "error": {"code": -32700, "message": f"Parse error: {e!s}"}}
+            err_resp = {
+                "jsonrpc": "2.0",
+                "id": None,
+                "error": {"code": -32700, "message": f"Parse error: {e!s}"},
+            }
             sys.stdout.write(json.dumps(err_resp) + "\n")
             sys.stdout.flush()
 
