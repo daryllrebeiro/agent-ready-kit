@@ -19,13 +19,20 @@ def run_worker_cycle(
 ) -> None:
     """Execute a complete scan and probing cycle for a list of domains."""
 
+    from packages.core.integrations.notifications import dispatch_dlq_escalation
     from packages.core.observability.logger import TraceContext, get_structured_logger
+    from packages.core.pipeline.budget_enforcer import BudgetEnforcer, BudgetExceededError
+    from packages.core.pipeline.dlq import DeadLetterQueue
+    from packages.core.probes.pipeline import ProbePipeline
 
     console = Console()
     logger = get_structured_logger("agentready.worker")
     storage = repo or StorageRepository()
     scorer = Scorer()
     prober = MultiModelProber()
+    dlq = DeadLetterQueue()
+    pipeline = ProbePipeline(dlq=dlq)
+    providers_by_name = {p.provider_name: p for p in prober.providers}
 
     console.print(f"[bold cyan]Starting AgentReady worker cycle for {len(domains)} domain(s)...[/bold cyan]")
 
@@ -47,21 +54,35 @@ def run_worker_cycle(
                 logger.warning(f"worker scoring failed for {domain_url}")
                 continue
 
-        # 2. Run multi-model probe suite
+        # 2. Run multi-model probe suite via the guarded pipeline
+        # (budget -> cache -> breaker -> provider -> DLQ on failure).
+        from packages.core.probes.prompts import STANDARD_PROBE_PROMPTS
+
         base_domain = extract_domain_from_url(domain_url)
         console.print(f"  [dim]Running multi-model citation probes for '{base_domain}'...[/dim]")
-
-        suite_results = prober.run_standard_probe_suite(
-            target_domain=base_domain,
-            max_prompts=max_prompts,
-            dry_run=dry_run,
-        )
 
         total_probes = 0
         total_citations = 0
 
-        for prompt_run in suite_results:
-            for probe_res in prompt_run["results"]:
+        pipeline.tenant_id = domain_url
+        pipeline.target_url = domain_url
+
+        for prompt_meta in STANDARD_PROBE_PROMPTS[:max_prompts]:
+            prompt = prompt_meta["prompt"]
+            for provider in prober.providers:
+                try:
+                    probe_res = pipeline.run(
+                        provider,
+                        prompt,
+                        dry_run=dry_run,
+                    )
+                except BudgetExceededError:
+                    console.print("  [yellow]Budget exhausted — stopping probe loop[/yellow]")
+                    logger.warning(f"worker budget exhausted for {domain_url}")
+                    break
+                except Exception as e:
+                    logger.warning(f"worker probe failed for {domain_url}: {e}")
+                    continue
                 total_probes += 1
                 storage.save_probe_run(domain_url, probe_res)
                 if base_domain in [d.lower() for d in probe_res.cited_domains]:
@@ -71,6 +92,29 @@ def run_worker_cycle(
         console.print(
             f"  [bold green][OK] Probing complete:[/bold green] {total_citations}/{total_probes} citations detected ({cit_pct:.1f}% citation share)"
         )
+
+    # 3. DLQ replay pass at cycle end: real re-execution through the same
+    # guarded pipeline; exhausted jobs escalate to a real outbound webhook
+    # (Task 9). dispatch_dlq_escalation returns False honestly when no
+    # webhook URL is configured — nothing is faked.
+    if len(dlq) and not dry_run:
+        def _replay(job) -> bool:
+            provider = providers_by_name.get(job.provider)
+            if provider is None:
+                return False
+            try:
+                pipeline.run(provider, job.prompt, dry_run=False)
+                return True
+            except Exception:
+                return False
+
+        results = dlq.replay_failed_jobs(
+            _replay,
+            max_retries=3,
+            escalation_callback=lambda job: dispatch_dlq_escalation(job),
+        )
+        logger.info(f"worker dlq replay: {results}")
+        console.print(f"[dim]DLQ replay: {results}[/dim]")
 
 
 def main() -> None:

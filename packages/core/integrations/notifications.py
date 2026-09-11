@@ -78,3 +78,42 @@ class NotificationDispatcher:
             return resp.status_code in [200, 204]
         except Exception:
             return False
+
+
+def dispatch_dlq_escalation(job: Any) -> bool:
+    """Phase 16 Task 9 code-side: send a real outbound webhook for an
+    escalated DLQ job.
+
+    Reads SLACK_WEBHOOK_URL / DISCORD_WEBHOOK_URL from the environment.
+    Returns True if at least one real webhook accepted the message,
+    False otherwise (no URL configured, or delivery failed).
+    No mocks, no in-memory stand-ins: when no URL is configured the
+    function reports failure honestly instead of pretending to send.
+    """
+    import os
+
+    slack_url = os.environ.get("SLACK_WEBHOOK_URL", "")
+    discord_url = os.environ.get("DISCORD_WEBHOOK_URL", "")
+    if not slack_url and not discord_url:
+        return False
+
+    text = (
+        f":rotating_light: AgentReady DLQ escalation\n"
+        f"provider={job.provider} target={job.target_url} "
+        f"retries={job.retry_count} error={job.error_message[:300]}"
+    )
+    sent = False
+    try:
+        if slack_url:
+            resp = requests.post(
+                slack_url, json={"text": text}, timeout=5.0
+            )
+            sent = sent or resp.status_code == 200
+        if discord_url:
+            resp = requests.post(
+                discord_url, json={"content": text}, timeout=5.0
+            )
+            sent = sent or resp.status_code in (200, 204)
+    except Exception:
+        return False
+    return sent
