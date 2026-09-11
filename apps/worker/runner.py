@@ -21,7 +21,7 @@ def run_worker_cycle(
 
     from packages.core.integrations.notifications import dispatch_dlq_escalation
     from packages.core.observability.logger import TraceContext, get_structured_logger
-    from packages.core.pipeline.budget_enforcer import BudgetEnforcer, BudgetExceededError
+    from packages.core.pipeline.budget_enforcer import BudgetExceededError
     from packages.core.pipeline.dlq import DeadLetterQueue
     from packages.core.probes.pipeline import ProbePipeline
 
@@ -67,22 +67,20 @@ def run_worker_cycle(
         pipeline.tenant_id = domain_url
         pipeline.target_url = domain_url
 
-        for prompt_meta in STANDARD_PROBE_PROMPTS[:max_prompts]:
-            prompt = prompt_meta["prompt"]
-            for provider in prober.providers:
-                try:
-                    probe_res = pipeline.run(
-                        provider,
-                        prompt,
-                        dry_run=dry_run,
-                    )
-                except BudgetExceededError:
-                    console.print("  [yellow]Budget exhausted — stopping probe loop[/yellow]")
-                    logger.warning(f"worker budget exhausted for {domain_url}")
-                    break
-                except Exception as e:
-                    logger.warning(f"worker probe failed for {domain_url}: {e}")
-                    continue
+        try:
+            suite_results = pipeline.run_suite(
+                prober,
+                STANDARD_PROBE_PROMPTS[:max_prompts],
+                target_domain=base_domain,
+                dry_run=dry_run,
+            )
+        except BudgetExceededError:
+            console.print("  [yellow]Budget exhausted — stopping probe loop[/yellow]")
+            logger.warning(f"worker budget exhausted for {domain_url}")
+            suite_results = []
+
+        for prompt_run in suite_results:
+            for probe_res in prompt_run["results"]:
                 total_probes += 1
                 storage.save_probe_run(domain_url, probe_res)
                 if base_domain in [d.lower() for d in probe_res.cited_domains]:
@@ -98,6 +96,7 @@ def run_worker_cycle(
     # (Task 9). dispatch_dlq_escalation returns False honestly when no
     # webhook URL is configured — nothing is faked.
     if len(dlq) and not dry_run:
+
         def _replay(job) -> bool:
             provider = providers_by_name.get(job.provider)
             if provider is None:

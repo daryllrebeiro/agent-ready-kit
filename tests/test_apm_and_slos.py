@@ -1,10 +1,11 @@
 """Tests for APM metrics bridge, SLO alerting engine, and incident tabletop rehearsals."""
 
 import pytest
+
 from packages.core.observability.apm import (
     APMMetricsBridge,
-    SLOAlertEngine,
     IncidentTabletopSimulator,
+    SLOAlertEngine,
 )
 
 
@@ -41,10 +42,10 @@ def test_apm_metrics_bridge_and_slo_alerting_breach():
 
 
 def test_incident_tabletop_rehearsal_drill():
-    drill_result = IncidentTabletopSimulator.run_edge_proxy_failclosed_drill(
-        on_call_engineer="alice@engineering.agentready.dev"
-    )
-    assert drill_result["rehearsal_status"] == "COMPLETED_SUCCESSFULLY"
-    assert drill_result["on_call_engineer"] == "alice@engineering.agentready.dev"
-    assert drill_result["kill_switch_executed"] is True
-    assert drill_result["time_to_mitigate_seconds"] < 5.0
+    # Phase 17 1.3: the hardcoded-success drill was removed. This test now
+    # pins the honest state: no drill exists, and calling the entrypoint
+    # says so instead of fabricating COMPLETED_SUCCESSFULLY.
+    with pytest.raises(NotImplementedError, match="No incident tabletop drill"):
+        IncidentTabletopSimulator.run_edge_proxy_failclosed_drill(
+            on_call_engineer="alice@engineering.agentready.dev"
+        )

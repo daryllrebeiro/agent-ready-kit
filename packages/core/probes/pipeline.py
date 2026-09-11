@@ -7,8 +7,9 @@ behind the same DistributedProbeCache interface.
 """
 
 from dataclasses import dataclass, field
+from typing import Any
 
-from packages.core.pipeline.budget_enforcer import BudgetEnforcer
+from packages.core.pipeline.budget_enforcer import BudgetEnforcer, BudgetExceededError
 from packages.core.pipeline.circuit_breaker import CircuitBreaker
 from packages.core.pipeline.dlq import DeadLetterQueue
 from packages.core.probes.base import BaseProbe
@@ -26,7 +27,7 @@ class ProbePipeline:
 
     budget: BudgetEnforcer = field(default_factory=BudgetEnforcer)
     cache: DistributedProbeCache = field(default_factory=DistributedProbeCache)
-    breakers: dict[str, CircuitBreaker] | None = None
+    breakers: dict[str, CircuitBreaker] = field(default_factory=dict)
     dlq: DeadLetterQueue = field(default_factory=DeadLetterQueue)
     tenant_id: str = "local"
     org_id: str = "local"
@@ -34,7 +35,6 @@ class ProbePipeline:
     plan_tier: str = "free"
 
     def __post_init__(self) -> None:
-        self.breakers = self.breakers or {}
         # Share one cache client between budget accounting and dedup cache so
         # usage reservations are visible to both (separate Mock clients would
         # silently diverge and budget checks would never trip).
@@ -80,3 +80,53 @@ class ProbePipeline:
             if not dry_run:
                 self.dlq.push(self.org_id, provider.provider_name, self.target_url, prompt, str(e))
             raise
+
+    def run_suite(
+        self,
+        prober: Any,
+        prompt_metas: list[dict[str, Any]],
+        target_domain: str | None = None,
+        dry_run: bool = False,
+    ) -> list[dict[str, Any]]:
+        """Run a prompt suite with every provider call guarded.
+
+        Same result shape as MultiModelProber.run_standard_probe_suite so
+        existing consumers (web/CLI/worker) need no reshaping. Spend stops
+        propagate: BudgetExceededError aborts the whole suite. Per-provider
+        failures are already recorded in the breaker + DLQ by run(); the
+        suite continues with the remaining providers.
+        """
+        suite_results: list[dict[str, Any]] = []
+        for meta in prompt_metas:
+            prompt = meta["prompt"]
+            results: list[ProbeResult] = []
+            cited: list[str] = []
+            for provider in prober.providers:
+                try:
+                    res = self.run(provider, prompt, dry_run=dry_run)
+                except BudgetExceededError:
+                    raise
+                except Exception as e:
+                    import logging
+
+                    logging.getLogger("agentready.pipeline").debug(
+                        "suite skipping failed provider=%s: %s",
+                        provider.provider_name,
+                        e,
+                    )
+                    continue
+                results.append(res)
+                if target_domain and target_domain.lower() in [d.lower() for d in res.cited_domains]:
+                    cited.append(provider.provider_name)
+            suite_results.append(
+                {
+                    "prompt": prompt,
+                    "target_domain": target_domain,
+                    "results": results,
+                    "cited_providers": cited,
+                    "citation_rate": len(cited) / len(prober.providers) if prober.providers else 0.0,
+                    "vertical": meta.get("vertical"),
+                    "prompt_id": meta.get("id"),
+                }
+            )
+        return suite_results

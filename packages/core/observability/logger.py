@@ -6,20 +6,20 @@ import sys
 import time
 import uuid
 from contextvars import ContextVar
-from datetime import datetime, timezone
-from typing import Any, Dict, Optional
+from datetime import UTC, datetime
+from typing import Any
 
 # Context variable for holding active trace and tenant information
-current_trace_id: ContextVar[Optional[str]] = ContextVar("current_trace_id", default=None)
-current_tenant_id: ContextVar[Optional[str]] = ContextVar("current_tenant_id", default=None)
+current_trace_id: ContextVar[str | None] = ContextVar("current_trace_id", default=None)
+current_tenant_id: ContextVar[str | None] = ContextVar("current_tenant_id", default=None)
 
 
 class StructuredJsonFormatter(logging.Formatter):
     """Outputs standardized single-line JSON log entries."""
 
     def format(self, record: logging.LogRecord) -> str:
-        log_obj: Dict[str, Any] = {
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+        log_obj: dict[str, Any] = {
+            "timestamp": datetime.now(UTC).isoformat(),
             "level": record.levelname,
             "logger": record.name,
             "message": record.getMessage(),
@@ -40,7 +40,7 @@ class StructuredJsonFormatter(logging.Formatter):
 class TraceContext:
     """Context manager for tracing operations with duration recording."""
 
-    def __init__(self, trace_id: Optional[str] = None, tenant_id: Optional[str] = None):
+    def __init__(self, trace_id: str | None = None, tenant_id: str | None = None):
         self.trace_id = trace_id or f"tr_{uuid.uuid4().hex[:12]}"
         self.tenant_id = tenant_id or "system"
         self._token_trace = None
@@ -70,9 +70,11 @@ def get_structured_logger(name: str = "agentready") -> logging.Logger:
     logger.setLevel(logging.INFO)
     logger.propagate = False
 
-    # Avoid duplicate handlers
+    # Avoid duplicate handlers. Logs go to STDERR: stdout is reserved for
+    # machine-readable output (e.g. `scan --json`); polluting it breaks
+    # the JSON contract that CI gates parse.
     if not logger.handlers:
-        handler = logging.StreamHandler(sys.stdout)
+        handler = logging.StreamHandler(sys.stderr)
         handler.setFormatter(StructuredJsonFormatter())
         logger.addHandler(handler)
 

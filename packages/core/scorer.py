@@ -50,13 +50,32 @@ class Scorer:
         Validates the literal URL plus DNS-resolved IPs (blocks
         hostname-of-internal-IP tricks). Redirect targets are re-validated
         in fetch_resource via a response hook.
+
+        Explicit opt-out: AGENTREADY_ALLOW_PRIVATE_HOSTS="127.0.0.1,::1"
+        permits loopback targets for local development and entrypoint smoke
+        tests. Each use is logged as a warning; never set in production.
         """
+        import logging
+        import os
+
         from packages.core.security.scanner import SecurityScanner
+
+        hostname = urlparse(url).hostname or ""
+        allowed = {
+            h.strip().lower()
+            for h in os.environ.get("AGENTREADY_ALLOW_PRIVATE_HOSTS", "").split(",")
+            if h.strip()
+        }
+        if hostname.lower() in allowed:
+            logging.getLogger("agentready.scorer").warning(
+                "SSRF guard bypassed for allowlisted host=%s via AGENTREADY_ALLOW_PRIVATE_HOSTS",
+                hostname,
+            )
+            return
 
         ok, reason = SecurityScanner.is_safe_public_url(url)
         if not ok:
             raise UnsafeTargetError(reason)
-        hostname = urlparse(url).hostname or ""
         try:
             import ipaddress
             import socket

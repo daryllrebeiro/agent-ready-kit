@@ -1,9 +1,9 @@
 """Production APM Bridge, Concrete SLO Definition, OpenTelemetry OTLP Exporter, and Incident Tabletop Drill."""
 
-import math
 import time
-from dataclasses import dataclass, field
-from typing import Any, Callable, Dict, List, Optional
+from collections.abc import Callable
+from dataclasses import dataclass
+from typing import Any
 
 
 @dataclass
@@ -14,7 +14,7 @@ class SLODefinition:
     breach_operator: str  # "greater_than" or "less_than"
 
 
-DEFAULT_PRODUCTION_SLOS: Dict[str, SLODefinition] = {
+DEFAULT_PRODUCTION_SLOS: dict[str, SLODefinition] = {
     "api_p95_latency_ms": SLODefinition(
         name="api_p95_latency_ms",
         target_value=500.0,
@@ -39,10 +39,10 @@ DEFAULT_PRODUCTION_SLOS: Dict[str, SLODefinition] = {
 class APMMetricsBridge:
     """Aggregates live runtime metrics and evaluates SLO compliance against APM targets."""
 
-    def __init__(self, slos: Optional[Dict[str, SLODefinition]] = None):
+    def __init__(self, slos: dict[str, SLODefinition] | None = None):
         self.slos = slos or DEFAULT_PRODUCTION_SLOS
-        self.api_latencies: List[float] = []
-        self.probe_executions: List[bool] = []  # True = success, False = failed
+        self.api_latencies: list[float] = []
+        self.probe_executions: list[bool] = []  # True = success, False = failed
 
     def record_api_request(self, latency_ms: float):
         self.api_latencies.append(latency_ms)
@@ -50,7 +50,7 @@ class APMMetricsBridge:
     def record_probe_execution(self, success: bool):
         self.probe_executions.append(success)
 
-    def calculate_current_metrics(self) -> Dict[str, float]:
+    def calculate_current_metrics(self) -> dict[str, float]:
         """Calculates current metric values from recorded samples."""
         p95_latency = 0.0
         if self.api_latencies:
@@ -76,7 +76,7 @@ class OpenTelemetryTraceExporterBridge:
 
     def __init__(self, service_name: str = "agentready-saas-core"):
         self.service_name = service_name
-        self.buffered_spans: List[Dict[str, Any]] = []
+        self.buffered_spans: list[dict[str, Any]] = []
 
     def record_span(
         self,
@@ -85,9 +85,9 @@ class OpenTelemetryTraceExporterBridge:
         name: str,
         tenant_id: str,
         duration_ms: float,
-        attributes: Optional[Dict[str, Any]] = None,
+        attributes: dict[str, Any] | None = None,
     ):
-        span = {
+        span: dict[str, Any] = {
             "traceId": trace_id,
             "spanId": span_id,
             "name": name,
@@ -103,7 +103,7 @@ class OpenTelemetryTraceExporterBridge:
                 span["attributes"].append({"key": k, "value": {"stringValue": str(v)}})
         self.buffered_spans.append(span)
 
-    def export_otlp_payload(self) -> Dict[str, Any]:
+    def export_otlp_payload(self) -> dict[str, Any]:
         """Generates an OpenTelemetry standard OTLP JSON payload."""
         payload = {
             "resourceSpans": [
@@ -133,13 +133,13 @@ class SLOAlertEngine:
     def __init__(
         self,
         bridge: APMMetricsBridge,
-        alert_dispatcher: Optional[Callable[[Dict[str, Any]], None]] = None,
+        alert_dispatcher: Callable[[dict[str, Any]], None] | None = None,
     ):
         self.bridge = bridge
         self.alert_dispatcher = alert_dispatcher
-        self.dispatched_alerts: List[Dict[str, Any]] = []
+        self.dispatched_alerts: list[dict[str, Any]] = []
 
-    def evaluate_and_alert(self) -> List[Dict[str, Any]]:
+    def evaluate_and_alert(self) -> list[dict[str, Any]]:
         """Checks all SLOs and triggers alerts for any breaches."""
         metrics = self.bridge.calculate_current_metrics()
         active_breaches = []
@@ -150,9 +150,12 @@ class SLOAlertEngine:
                 continue
 
             breached = False
-            if slo.breach_operator == "greater_than" and current_val > slo.target_value:
-                breached = True
-            elif slo.breach_operator == "less_than" and current_val < slo.target_value:
+            if (
+                slo.breach_operator == "greater_than"
+                and current_val > slo.target_value
+                or slo.breach_operator == "less_than"
+                and current_val < slo.target_value
+            ):
                 breached = True
 
             if breached:
@@ -174,23 +177,18 @@ class SLOAlertEngine:
 
 
 class IncidentTabletopSimulator:
-    """Executes rehearsed incident tabletop drill for edge proxy fail-closed scenarios."""
+    """Placeholder for a future incident tabletop drill.
+
+    HONEST STATUS: no drill has ever been run. The previous
+    run_edge_proxy_failclosed_drill() returned hardcoded success and was
+    cited as checkpoint evidence; it has been removed. Do not reintroduce
+    a drill that does not drive real components.
+    """
 
     @staticmethod
-    def run_edge_proxy_failclosed_drill(on_call_engineer: str) -> Dict[str, Any]:
-        """Runs rehearsed runbook procedure: detects synthetic breach and verifies manual kill-switch activation."""
-        drill_start = time.time()
-        incident_id = f"drill_edge_502_{int(drill_start)}"
-        escalation_received = True
-        kill_switch_executed = True
-        elapsed_sec = time.time() - drill_start
-
-        return {
-            "drill_id": incident_id,
-            "scenario": "Edge Proxy 502 Fail-Closed Origin Cascade",
-            "on_call_engineer": on_call_engineer,
-            "escalation_received": escalation_received,
-            "kill_switch_executed": kill_switch_executed,
-            "rehearsal_status": "COMPLETED_SUCCESSFULLY",
-            "time_to_mitigate_seconds": round(elapsed_sec, 3),
-        }
+    def run_edge_proxy_failclosed_drill(on_call_engineer: str) -> dict[str, Any]:
+        """Not implemented: no tabletop drill has been conducted."""
+        raise NotImplementedError(
+            "No incident tabletop drill has been run. Implement a drill "
+            "that drives real components before claiming rehearsal status."
+        )

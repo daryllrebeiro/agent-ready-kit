@@ -1,7 +1,8 @@
 """Autonomous scheduled probe daemon tracking recurring citation velocity and deltas."""
 
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any
+
 from packages.core.probes.runner import MultiModelProber
 from packages.core.storage.repository import StorageRepository
 
@@ -9,10 +10,10 @@ from packages.core.storage.repository import StorageRepository
 class ProbeSchedulerDaemon:
     """Manages scheduled multi-model probe execution and citation velocity tracking."""
 
-    def __init__(self, storage_repo: Optional[StorageRepository] = None):
+    def __init__(self, storage_repo: StorageRepository | None = None):
         self.storage = storage_repo or StorageRepository()
         self.prober = MultiModelProber()
-        self._registered_domains: List[str] = []
+        self._registered_domains: list[str] = []
 
     def register_domain(self, domain: str) -> None:
         """Register domain for recurring probing."""
@@ -20,10 +21,10 @@ class ProbeSchedulerDaemon:
         if clean not in self._registered_domains:
             self._registered_domains.append(clean)
 
-    def execute_probe_cycle(self, max_prompts_per_domain: int = 2, dry_run: bool = True) -> Dict[str, Any]:
+    def execute_probe_cycle(self, max_prompts_per_domain: int = 2, dry_run: bool = True) -> dict[str, Any]:
         """Run single probing cycle across all registered domains."""
         timestamp = time.time()
-        cycle_summary: Dict[str, Any] = {
+        cycle_summary: dict[str, Any] = {
             "timestamp": timestamp,
             "domains_probed": len(self._registered_domains),
             "domain_results": {},
@@ -40,12 +41,12 @@ class ProbeSchedulerDaemon:
             cited_probes = 0
 
             for prompt_run in results:
-                for provider_name, res in prompt_run.get("probes", {}).items():
+                for res in prompt_run.get("results", []):
                     total_probes += 1
                     if res.is_cited:
                         cited_probes += 1
                     if not dry_run:
-                        self.storage.save_probe_result(domain, res)
+                        self.storage.save_probe_run(domain, res)
 
             citation_rate = round((cited_probes / max(1, total_probes)) * 100.0, 1)
 
@@ -62,7 +63,7 @@ class ProbeSchedulerDaemon:
         domain: str,
         current_rate_pct: float,
         previous_rate_pct: float,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Compute citation velocity delta and movement direction."""
         delta = round(current_rate_pct - previous_rate_pct, 1)
         if delta > 0:

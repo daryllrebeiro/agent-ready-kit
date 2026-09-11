@@ -2,8 +2,8 @@
 
 import os
 import time
-from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from typing import Any
+
 import requests
 
 from packages.core.probes.base import BaseProbe
@@ -17,6 +17,10 @@ class OpenAIProbe(BaseProbe):
     @property
     def provider_name(self) -> str:
         return "openai"
+
+    @property
+    def model_name(self) -> str:
+        return "gpt-4o"
 
     def probe(self, prompt: str, dry_run: bool = False) -> ProbeResult:
         api_key = self.api_key or os.environ.get("OPENAI_API_KEY")
@@ -34,6 +38,7 @@ class OpenAIProbe(BaseProbe):
             latency = (time.time() - start_time) * 1000.0
             return ProbeResult(
                 provider=self.provider_name,
+                model_name=self.model_name,
                 prompt=prompt,
                 raw_response=raw_text,
                 cited_domains=citations["domains"],
@@ -44,7 +49,7 @@ class OpenAIProbe(BaseProbe):
 
         # Live API call
         headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
-        payload = {
+        payload: dict[str, Any] = {
             "model": "gpt-4o",
             "messages": [
                 {
@@ -70,6 +75,7 @@ class OpenAIProbe(BaseProbe):
                 citations = extract_citations(raw_text)
                 return ProbeResult(
                     provider=self.provider_name,
+                    model_name=self.model_name,
                     prompt=prompt,
                     raw_response=raw_text,
                     cited_domains=citations["domains"],
@@ -81,6 +87,7 @@ class OpenAIProbe(BaseProbe):
                 raw_text = f"[API Error {resp.status_code}]: {resp.text}"
                 return ProbeResult(
                     provider=self.provider_name,
+                    model_name=self.model_name,
                     prompt=prompt,
                     raw_response=raw_text,
                     cited_domains=[],
@@ -92,8 +99,9 @@ class OpenAIProbe(BaseProbe):
             latency = (time.time() - start_time) * 1000.0
             return ProbeResult(
                 provider=self.provider_name,
+                model_name=self.model_name,
                 prompt=prompt,
-                raw_response=f"[Exception]: {str(e)}",
+                raw_response=f"[Exception]: {e!s}",
                 cited_domains=[],
                 extracted_urls=[],
                 latency_ms=round(latency, 2),
@@ -107,6 +115,10 @@ class AnthropicProbe(BaseProbe):
     @property
     def provider_name(self) -> str:
         return "anthropic"
+
+    @property
+    def model_name(self) -> str:
+        return "claude-3-5-sonnet"
 
     def probe(self, prompt: str, dry_run: bool = False) -> ProbeResult:
         api_key = self.api_key or os.environ.get("ANTHROPIC_API_KEY")
@@ -122,6 +134,7 @@ class AnthropicProbe(BaseProbe):
             latency = (time.time() - start_time) * 1000.0
             return ProbeResult(
                 provider=self.provider_name,
+                model_name=self.model_name,
                 prompt=prompt,
                 raw_response=raw_text,
                 cited_domains=citations["domains"],
@@ -135,7 +148,7 @@ class AnthropicProbe(BaseProbe):
             "anthropic-version": "2023-06-01",
             "Content-Type": "application/json",
         }
-        payload = {
+        payload: dict[str, Any] = {
             "model": "claude-3-5-sonnet-20241022",
             "max_tokens": 1000,
             "messages": [{"role": "user", "content": prompt}],
@@ -155,6 +168,7 @@ class AnthropicProbe(BaseProbe):
                 citations = extract_citations(raw_text)
                 return ProbeResult(
                     provider=self.provider_name,
+                    model_name=self.model_name,
                     prompt=prompt,
                     raw_response=raw_text,
                     cited_domains=citations["domains"],
@@ -165,6 +179,7 @@ class AnthropicProbe(BaseProbe):
             else:
                 return ProbeResult(
                     provider=self.provider_name,
+                    model_name=self.model_name,
                     prompt=prompt,
                     raw_response=f"[API Error {resp.status_code}]: {resp.text}",
                     cited_domains=[],
@@ -176,8 +191,9 @@ class AnthropicProbe(BaseProbe):
             latency = (time.time() - start_time) * 1000.0
             return ProbeResult(
                 provider=self.provider_name,
+                model_name=self.model_name,
                 prompt=prompt,
-                raw_response=f"[Exception]: {str(e)}",
+                raw_response=f"[Exception]: {e!s}",
                 cited_domains=[],
                 extracted_urls=[],
                 latency_ms=round(latency, 2),
@@ -187,6 +203,10 @@ class AnthropicProbe(BaseProbe):
 
 class GeminiProbe(BaseProbe):
     """Probes Google Gemini models."""
+
+    @property
+    def model_name(self) -> str:
+        return "gemini-2.5-flash"
 
     @property
     def provider_name(self) -> str:
@@ -206,6 +226,7 @@ class GeminiProbe(BaseProbe):
             latency = (time.time() - start_time) * 1000.0
             return ProbeResult(
                 provider=self.provider_name,
+                model_name=self.model_name,
                 prompt=prompt,
                 raw_response=raw_text,
                 cited_domains=citations["domains"],
@@ -215,7 +236,7 @@ class GeminiProbe(BaseProbe):
             )
 
         url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
-        payload = {
+        payload: dict[str, Any] = {
             "contents": [{"parts": [{"text": prompt}]}],
             "generationConfig": {"temperature": 0.2},
         }
@@ -234,6 +255,7 @@ class GeminiProbe(BaseProbe):
                 citations = extract_citations(raw_text)
                 return ProbeResult(
                     provider=self.provider_name,
+                    model_name=self.model_name,
                     prompt=prompt,
                     raw_response=raw_text,
                     cited_domains=citations["domains"],
@@ -244,6 +266,7 @@ class GeminiProbe(BaseProbe):
             else:
                 return ProbeResult(
                     provider=self.provider_name,
+                    model_name=self.model_name,
                     prompt=prompt,
                     raw_response=f"[API Error {resp.status_code}]: {resp.text}",
                     cited_domains=[],
@@ -255,8 +278,9 @@ class GeminiProbe(BaseProbe):
             latency = (time.time() - start_time) * 1000.0
             return ProbeResult(
                 provider=self.provider_name,
+                model_name=self.model_name,
                 prompt=prompt,
-                raw_response=f"[Exception]: {str(e)}",
+                raw_response=f"[Exception]: {e!s}",
                 cited_domains=[],
                 extracted_urls=[],
                 latency_ms=round(latency, 2),
@@ -266,6 +290,10 @@ class GeminiProbe(BaseProbe):
 
 class PerplexityProbe(BaseProbe):
     """Probes Perplexity AI search models (Sonar)."""
+
+    @property
+    def model_name(self) -> str:
+        return "sonar"
 
     @property
     def provider_name(self) -> str:
@@ -287,6 +315,7 @@ class PerplexityProbe(BaseProbe):
             latency = (time.time() - start_time) * 1000.0
             return ProbeResult(
                 provider=self.provider_name,
+                model_name=self.model_name,
                 prompt=prompt,
                 raw_response=raw_text,
                 cited_domains=citations["domains"],
@@ -296,7 +325,7 @@ class PerplexityProbe(BaseProbe):
             )
 
         headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
-        payload = {
+        payload: dict[str, Any] = {
             "model": "sonar",
             "messages": [{"role": "user", "content": prompt}],
         }
@@ -320,6 +349,7 @@ class PerplexityProbe(BaseProbe):
                         citations["urls"].append(cit)
                 return ProbeResult(
                     provider=self.provider_name,
+                    model_name=self.model_name,
                     prompt=prompt,
                     raw_response=raw_text,
                     cited_domains=citations["domains"],
@@ -330,6 +360,7 @@ class PerplexityProbe(BaseProbe):
             else:
                 return ProbeResult(
                     provider=self.provider_name,
+                    model_name=self.model_name,
                     prompt=prompt,
                     raw_response=f"[API Error {resp.status_code}]: {resp.text}",
                     cited_domains=[],
@@ -341,8 +372,9 @@ class PerplexityProbe(BaseProbe):
             latency = (time.time() - start_time) * 1000.0
             return ProbeResult(
                 provider=self.provider_name,
+                model_name=self.model_name,
                 prompt=prompt,
-                raw_response=f"[Exception]: {str(e)}",
+                raw_response=f"[Exception]: {e!s}",
                 cited_domains=[],
                 extracted_urls=[],
                 latency_ms=round(latency, 2),

@@ -8,19 +8,17 @@ from http.server import HTTPServer, SimpleHTTPRequestHandler
 from typing import Any
 
 from packages.core.auth.middleware import AuthContext, AuthManager
+from packages.core.pipeline.budget_enforcer import BudgetEnforcer as _BudgetEnforcer
 from packages.core.probes.extractor import extract_domain_from_url
-from packages.core.probes.redis_connection import connect_real as connect_real_redis
 from packages.core.probes.redis_cache import DistributedProbeCache
+from packages.core.probes.redis_connection import connect_real as connect_real_redis
 from packages.core.probes.runner import MultiModelProber
 from packages.core.schemas import Score
 from packages.core.scorer import Scorer
-from packages.core.security.scanner import SecurityScanner
 from packages.core.storage.repository import StorageRepository
-from packages.core.pipeline.budget_enforcer import BudgetEnforcer as _BudgetEnforcer
-from packages.core.errors.humanized import HumanizedError
-from packages.core.pipeline.budget_enforcer import BudgetExceededError
 
 WEB_DIR = os.path.dirname(os.path.abspath(__file__))
+
 
 # Phase 16 Task 1 (+ follow-up): AuthManager backing the live request path.
 # AGENTREADY_STORAGE=postgres -> persistent hashed keys in Postgres
@@ -36,8 +34,10 @@ def _build_auth_manager():
             print("[auth] persistent Postgres-backed API keys enabled")
             return mgr
         except Exception as e:
-            print(f"[auth] WARNING: AGENTREADY_STORAGE=postgres but PG unreachable ({e}); "
-                  "falling back to in-process keys")
+            print(
+                f"[auth] WARNING: AGENTREADY_STORAGE=postgres but PG unreachable ({e}); "
+                "falling back to in-process keys"
+            )
     return AuthManager()
 
 
@@ -124,9 +124,7 @@ class DashboardAPIHandler(SimpleHTTPRequestHandler):
         """
         auth_ctx = AUTH_MANAGER.authenticate_header(self.headers.get("Authorization"))
         if auth_ctx is None:
-            self.send_json_response(
-                {"error": "unauthorized: valid Bearer API key required"}, status=401
-            )
+            self.send_json_response({"error": "unauthorized: valid Bearer API key required"}, status=401)
             return None
         return auth_ctx
 
@@ -205,9 +203,7 @@ class DashboardAPIHandler(SimpleHTTPRequestHandler):
             event = _json.loads(raw)
             data_obj = event.get("data", {}).get("object", {})
             tenant_id = (
-                data_obj.get("metadata", {}).get("tenant_id")
-                or data_obj.get("customer")
-                or "org_unknown"
+                data_obj.get("metadata", {}).get("tenant_id") or data_obj.get("customer") or "org_unknown"
             )
             event_type = event.get("type", "")
             sub = engine.get_subscription(tenant_id) or {}
@@ -358,12 +354,16 @@ class DashboardAPIHandler(SimpleHTTPRequestHandler):
                 self.send_json_response({"error": "url is required"}, status=400)
                 return
 
-            ok, reason = SecurityScanner.is_safe_public_url(url)
-            if not ok:
-                self.send_json_response({"error": f"unsafe-target: {reason}"}, status=400)
+            scorer = Scorer()
+            try:
+                # Shared boundary incl. the AGENTREADY_ALLOW_PRIVATE_HOSTS
+                # opt-in (local dev / smoke tests); direct
+                # is_safe_public_url would bypass that allowlist.
+                scorer.resolve_and_validate(url)
+            except Exception as e:
+                self.send_json_response({"error": f"unsafe-target: {e}"}, status=400)
                 return
 
-            scorer = Scorer()
             score = scorer.score_url(url)
             if score.metadata.get("fetch_status", {}).get("html") is None and "unsafe-target" in str(
                 score.metadata
@@ -379,6 +379,8 @@ class DashboardAPIHandler(SimpleHTTPRequestHandler):
     def handle_post_probe(self):
         from packages.core.errors.humanized import HumanizedError
         from packages.core.pipeline.budget_enforcer import BudgetExceededError
+        from packages.core.probes.pipeline import ProbePipeline
+        from packages.core.probes.prompts import STANDARD_PROBE_PROMPTS
         from packages.core.storage.tenant_store import TenantStore
 
         auth_ctx = self.require_auth()
@@ -396,20 +398,21 @@ class DashboardAPIHandler(SimpleHTTPRequestHandler):
                 self.send_json_response({"error": "url is required"}, status=400)
                 return
 
-            # Phase 16 Task 2: pre-call budget stop on the real path.
-            # Budget check is OUTSIDE the try block so BudgetExceededError
-            # is not caught by the generic handler below.
-            if not dry_run:
-                prober_probe_count = 3 * len(MultiModelProber().providers)
-                BUDGET_ENFORCER.check_and_reserve_budget(
-                    auth_ctx.tenant_id, "free", units_needed=prober_probe_count
-                )
-
+            # Phase 17 1.3: full guarded pipeline (budget -> cache ->
+            # breaker -> provider -> DLQ), not a lone budget pre-check.
+            # BudgetExceededError aborts before any provider call.
             base_domain = extract_domain_from_url(url)
             prober = MultiModelProber()
-            suite_results = prober.run_standard_probe_suite(
+            pipeline = ProbePipeline(
+                budget=BUDGET_ENFORCER,
+                tenant_id=auth_ctx.tenant_id,
+                org_id=auth_ctx.org_id,
+                target_url=url,
+            )
+            suite_results = pipeline.run_suite(
+                prober,
+                STANDARD_PROBE_PROMPTS[:3],
                 target_domain=base_domain,
-                max_prompts=3,
                 dry_run=dry_run,
             )
 
@@ -429,7 +432,7 @@ class DashboardAPIHandler(SimpleHTTPRequestHandler):
         except BudgetExceededError as be:
             herr = HumanizedError.from_budget_exceeded(be.tenant_id, be.limit, be.current)
             self.send_json_response(herr.to_dict(), status=herr.status_code)
-        except Exception as e:
+        except Exception:
             import logging
 
             # Structured server-side log only; clients get a generic
@@ -437,9 +440,7 @@ class DashboardAPIHandler(SimpleHTTPRequestHandler):
             logging.getLogger("agentready.web").exception(
                 "probe handler failed for tenant=%s", auth_ctx.tenant_id
             )
-            self.send_json_response(
-                {"error": "probe failed", "error_code": "PROBE_FAILED"}, status=500
-            )
+            self.send_json_response({"error": "probe failed", "error_code": "PROBE_FAILED"}, status=500)
 
     def handle_get_healthz(self):
         from packages.core.observability.health import HealthChecker

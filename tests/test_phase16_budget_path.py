@@ -33,18 +33,26 @@ def test_probe_blocked_before_provider_when_budget_exhausted(monkeypatch):
         # through the same shared enforcer the handler uses.
         web_server.BUDGET_ENFORCER.cache.increment_tenant_usage("tenant_budget_blocked", 10000)
 
-        # Observation wrapper only: counts + delegates. If enforcement works,
-        # the count stays 0 because the handler returns before probing.
+        # Observation at the true upstream boundary: provider.probe must
+        # never execute. (Counting Pipeline.run would include the denied
+        # attempt itself, since the budget check lives inside run.)
         calls = {"n": 0}
-        from packages.core.probes.runner import MultiModelProber
+        from packages.core.probes import providers as provider_mod
 
-        orig = MultiModelProber.run_standard_probe_suite
+        originals = {}
+        for cls in (
+            provider_mod.OpenAIProbe,
+            provider_mod.AnthropicProbe,
+            provider_mod.GeminiProbe,
+            provider_mod.PerplexityProbe,
+        ):
+            originals[cls] = cls.probe
 
-        def counting(self, *args, **kwargs):
-            calls["n"] += 1
-            return orig(self, *args, **kwargs)
+            def counting(self, *args, _orig=cls.probe, **kwargs):
+                calls["n"] += 1
+                return _orig(self, *args, **kwargs)
 
-        monkeypatch.setattr(MultiModelProber, "run_standard_probe_suite", counting)
+            monkeypatch.setattr(cls, "probe", counting)
 
         conn = HTTPConnection("127.0.0.1", port)
         body = json.dumps({"url": "https://example.com", "dry_run": False})
@@ -71,15 +79,17 @@ def test_probe_proceeds_when_budget_available(monkeypatch):
         raw_key = web_server.AUTH_MANAGER.generate_api_key(tenant_id="tenant_budget_ok")
 
         calls = {"n": 0}
-        from packages.core.probes.runner import MultiModelProber
+        from packages.core.probes.pipeline import ProbePipeline
 
-        def fake_suite(self, *args, **kwargs):
+        def fake_run(self, provider, prompt, dry_run=False):
+            from packages.core.schemas import ProbeResult
+
             calls["n"] += 1
-            return []
+            return ProbeResult(provider=provider.provider_name, prompt=prompt, raw_response="")
 
-        # NOTE: the suite itself is stubbed here ONLY to avoid real upstream
-        # LLM spend in CI; the budget gate under test runs unmocked before it.
-        monkeypatch.setattr(MultiModelProber, "run_standard_probe_suite", fake_suite)
+        # NOTE: provider calls are stubbed here ONLY to avoid real upstream
+        # LLM spend in CI; budget/cache/breaker/DLQ gates run unmocked first.
+        monkeypatch.setattr(ProbePipeline, "run", fake_run)
 
         conn = HTTPConnection("127.0.0.1", port)
         body = json.dumps({"url": "https://example.com", "dry_run": False})
@@ -92,7 +102,9 @@ def test_probe_proceeds_when_budget_available(monkeypatch):
         res = conn.getresponse()
         payload = json.loads(res.read().decode())
         assert res.status == 200, f"expected 200, got {res.status}: {payload}"
-        assert calls["n"] == 1
+        # 3 prompts x 4 providers, every one through the guarded pipeline.
+        assert calls["n"] == 12, f"expected 12 guarded provider calls, got {calls['n']}"
+        assert payload["probes_run"] == 12
     finally:
         server.shutdown()
         server.server_close()
