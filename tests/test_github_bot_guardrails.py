@@ -1,6 +1,7 @@
 """Unit tests for GitHub PR Bot Safety Guardrails."""
 
 from unittest.mock import MagicMock, patch
+
 from packages.core.fixer.github_bot import GitHubPRBot, RepoOptInRegistry
 
 
@@ -37,12 +38,18 @@ def test_github_bot_diff_preview_generation():
 
 @patch("requests.get")
 @patch("requests.post")
-@patch("requests.put")
-def test_github_bot_draft_pr_and_idempotency(mock_put, mock_post, mock_get):
-    # Mock GitHub API responses
+def test_github_bot_draft_pr_and_idempotency(mock_post, mock_get):
+    # Mock GitHub tree-API responses (no Contents API: atomic tree commit)
     mock_get.return_value = MagicMock(status_code=200, json=lambda: {"object": {"sha": "base123"}})
-    mock_post.return_value = MagicMock(status_code=201, json=lambda: {"html_url": "https://github.com/org/repo/pull/1", "number": 1})
-    mock_put.return_value = MagicMock(status_code=200)
+
+    def post_side_effect(url, **kwargs):
+        if url.endswith("/pulls"):
+            return MagicMock(
+                status_code=201, json=lambda: {"html_url": "https://github.com/org/repo/pull/1", "number": 1}
+            )
+        return MagicMock(status_code=201, json=lambda: {"sha": "mock_sha"})
+
+    mock_post.side_effect = post_side_effect
 
     registry = RepoOptInRegistry()
     registry.register_repo("org/repo")
